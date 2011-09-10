@@ -1,0 +1,5 @@
+*.swp
+delaunay
+*.o
+.depend
+
