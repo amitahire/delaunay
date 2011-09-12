@@ -24,6 +24,8 @@ bool AABBIntersectsShell(const AABB& aabb, Vec3_arg sphereCenter, float minRadiu
 bool AABBAbovePlane(const AABB& aabb, const Plane& plane);
 Vec3 MakeSplitNormal(int splitdir);
 void MakeSplitPlane(Plane& plane, int dir, const AABB& bounds);
+bool ComputeCircumcircle(Vec3_arg a, Vec3_arg b, Vec3_arg c, Vec3& outCenter, float &outRadiusSq);
+bool ComputeCircumsphere(Vec3_arg a, Vec3_arg b, Vec3_arg c, Vec3_arg d, Vec3 &outCenter, float &outRadiusSq);
 
 template<class T>
 inline T Clamp(T val, T min, T max)
@@ -34,6 +36,18 @@ inline T Clamp(T val, T min, T max)
 		return max;
 	else
 		return val;
+}
+
+template<class T>
+inline T Max(T val0, T val1)
+{
+	return val0 > val1 ? val0 : val1;
+}
+
+template<class T>
+inline T Min(T val0, T val1)
+{
+	return val0 < val1 ? val0 : val1;
 }
 
 inline float AngleWrap(float angle)

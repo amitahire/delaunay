@@ -28,27 +28,40 @@ struct ddPlane
 	AABB bounds;
 };
 
+struct ddSphere
+{
+	ddSphere(Vec3_arg center, float radius, float r, float g, float b, float a)
+		: center(center), radius(radius), r(r), g(g), b(b), a(a) {}
+	Vec3 center;
+	float radius;
+	float r,g,b,a;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 // Global State for debug rendering
 static std::vector< AABB > s_ddAABBs;
 static std::vector< ddPoint > s_ddPoints;
 static std::vector< ddPlane > s_ddPlanes;
+static std::vector< ddSphere > s_ddSpheres;
 void ClearDebugDraw()
 {
 	s_ddAABBs.clear();
 	s_ddPoints.clear();	
 	s_ddPlanes.clear();
+	s_ddSpheres.clear();
 }
 
 static void ddRenderAABBs();
 static void ddRenderPoints();
 static void ddRenderPlanes();
+static void ddRenderSpheres(); 
 
 void RenderDebugDraw()
 {
 	ddRenderAABBs();
 	ddRenderPoints();
 	ddRenderPlanes();
+	ddRenderSpheres();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -256,6 +269,21 @@ static void ddRenderPlanes()
 	}
 }
 
+static void ddRenderSpheres()
+{
+	for(int i = 0, c = s_ddSpheres.size(); i < c; ++i)
+	{
+		ddSphere & sphere = s_ddSpheres[i];
+		const int subdivs = 12;
+		glColor4f(sphere.r, sphere.g, sphere.b, sphere.a);
+
+		glPushMatrix();
+		glTranslatef(sphere.center.x, sphere.center.y, sphere.center.z);
+		glutSolidSphere(sphere.radius, subdivs, subdivs);
+		glPopMatrix();
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Append functions
 
@@ -272,5 +300,10 @@ void DebugDrawPlane(const AABB& aabb, const Plane& plane)
 void DebugDrawPoint(Vec3_arg pos, float r, float g, float b)
 {
 	s_ddPoints.push_back( ddPoint(pos, r, g, b) );
+}
+
+void DebugDrawSphere(Vec3_arg center, float radius, float r, float g, float b, float a)
+{
+	s_ddSpheres.push_back( ddSphere(center, radius, r, g, b, a) );
 }
 

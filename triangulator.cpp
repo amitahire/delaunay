@@ -91,10 +91,12 @@ void Triangulator::StartWall(SplitNode* node)
 	int v2 = m_grid->PointWithMinCircumcircle(v0, v1);
 	if(v2 == -1)
 		return;
+	DebugDrawPoint(m_grid->GetPos(v2), 0.f, 1.f, 0.f);
 
 	int v3 = m_grid->PointWithMinCircumsphere(v0, v1, v2);
 	if(v3 == -1)
 		return;
+	DebugDrawPoint(m_grid->GetPos(v3), 1.f, 0.f, 1.f);
 
 	// find center, 
 	// orient so faces are CCW, 

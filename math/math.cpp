@@ -75,3 +75,85 @@ void MakeSplitPlane(Plane& plane, int dir, const AABB& bounds)
 	plane.m_d = dot(0.5f*(bounds.m_max + bounds.m_min), plane.m_normal);
 }
 
+bool ComputeCircumcircle(Vec3_arg a, Vec3_arg b, Vec3_arg c, Vec3& outCenter, float &outRadiusSq)
+{
+	// Solving with Cramer's rule - just solving one t-parameter of two lines intersecting.
+	Vec3 ab = b - a;
+	Vec3 bc = c - b;
+	Vec3 abHalf = 0.5f * a + 0.5f * b;
+	Vec3 bcHalf = 0.5f * b + 0.5f * c;
+	Vec3 midpointDiff = bcHalf - abHalf;
+
+	Vec3 normal = cross(ab, bc);
+	Vec3 abNormal = cross(normal, ab);
+	Vec3 bcNormal = cross(normal, bc);
+
+	float dot0 = dot(abNormal, abNormal);
+	float dot1 = dot(abNormal, bcNormal);
+	float dot3 = -dot(bcNormal, bcNormal);
+
+	float denom = dot0 * dot3 + dot1 * dot1; // dot1 * dot1 = - (-dot1) * (dot1)
+	if( fabs(denom) < EPSILON )
+		return false;
+
+	float dot4 = dot(abNormal, midpointDiff);
+	float dot5 = dot(bcNormal, midpointDiff);
+
+	float t = ( dot4 * dot3 + dot1 * dot5 ) / denom; // + dot 1 = - (-dot1)
+	outCenter = abHalf + t * abNormal ;
+	outRadiusSq = magnitude_squared(a - outCenter);
+	
+	printf("circle radius to each point: %f %f %f\n",
+		magnitude(a - outCenter),
+		magnitude(b - outCenter),
+		magnitude(c - outCenter));
+	return true;
+
+}
+
+bool ComputeCircumsphere(Vec3_arg a, Vec3_arg b, Vec3_arg c, Vec3_arg d, Vec3 &outCenter, float &outRadiusSq)
+{
+	Mat4 aMat(a.x, a.y, a.z, 1.f,
+		b.x, b.y, b.z, 1.f,
+		c.x, c.y, c.z, 1.f,
+		d.x, d.y, d.z, 1.f);
+	double aCoef = ddet(aMat);
+
+	if(fabs(aCoef) < EPSILON)
+		return false;
+
+	Mat4 bMat = aMat;
+	bMat.m[0] = a.x * a.x + a.y * a.y + a.z * a.z;
+	bMat.m[4] = b.x * b.x + b.y * b.y + b.z * b.z;
+	bMat.m[8] = c.x * c.x + c.y * c.y + c.z * c.z;
+	bMat.m[12] = d.x * d.x + d.y * d.y + d.z * d.z;
+	double bxCoef = ddet(bMat);
+
+	bMat.m[1] = a.x;
+	bMat.m[5] = b.x;
+	bMat.m[9] = c.x;
+	bMat.m[13] = d.x;
+	double byCoef = -ddet(bMat);
+
+	bMat.m[2] = a.y;
+	bMat.m[6] = b.y;
+	bMat.m[10] = c.y;
+	bMat.m[14] = d.y;
+	double bzCoef = ddet(bMat);
+
+	bMat.m[3] = a.z;
+	bMat.m[7] = b.z;
+	bMat.m[11] = c.z;
+	bMat.m[15] = d.z;
+	double cCoef = ddet(bMat);
+
+	double inv_double_a = 1.0 / (2.0 * aCoef);
+	outCenter.x = bxCoef * inv_double_a;
+	outCenter.y = byCoef * inv_double_a;
+	outCenter.z = bzCoef * inv_double_a;
+
+	outRadiusSq = float((bxCoef * bxCoef + byCoef * byCoef + bzCoef * bzCoef - 4.f * aCoef * cCoef) / (4.f * aCoef * aCoef));
+
+	return true;
+}
+

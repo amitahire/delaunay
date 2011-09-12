@@ -124,22 +124,53 @@ inline float det3x3(float a11, float a12, float a13,
 	return r;
 }
 
+inline double ddet3x3(double a11, double a12, double a13,
+					double a21, double a22, double a23,
+					double a31, double a32, double a33) 
+{
+	double d1 = a22*a33 - a23*a32;
+	double d2 = a23*a31 - a21*a33; // negated
+	double d3 = a21*a32 - a22*a31;
+	
+	double r = a11 * d1 + a12 * d2 + a13 * d3;
+	return r;
+}
+
 inline float det(Mat4_arg m)
 {	
-	float d1 = det3x3(m.m[1*4 + 1],m.m[1*4 + 2],m.m[1*4 + 3],
-					  m.m[2*4 + 1],m.m[2*4 + 2],m.m[2*4 + 3],
-					  m.m[3*4 + 1],m.m[3*4 + 2],m.m[3*4 + 3]);
-	float d2 = det3x3(m.m[1*4 + 0],m.m[1*4 + 2],m.m[1*4 + 3],
-					  m.m[2*4 + 0],m.m[2*4 + 2],m.m[2*4 + 3],
-					  m.m[3*4 + 0],m.m[3*4 + 2],m.m[3*4 + 3]);
-	float d3 = det3x3(m.m[1*4 + 0],m.m[1*4 + 1],m.m[1*4 + 3],
-					  m.m[2*4 + 0],m.m[2*4 + 1],m.m[2*4 + 3],
-					  m.m[3*4 + 0],m.m[3*4 + 1],m.m[3*4 + 3]);
-	float d4 = det3x3(m.m[1*4 + 0],m.m[1*4 + 1],m.m[1*4 + 2],
-					  m.m[2*4 + 0],m.m[2*4 + 1],m.m[2*4 + 2],
-					  m.m[3*4 + 0],m.m[3*4 + 1],m.m[3*4 + 2]);
+	float d1 = det3x3(m.m[1*4 + 1], m.m[1*4 + 2], m.m[1*4 + 3],
+					  m.m[2*4 + 1], m.m[2*4 + 2], m.m[2*4 + 3],
+					  m.m[3*4 + 1], m.m[3*4 + 2], m.m[3*4 + 3]);
+	float d2 = det3x3(m.m[1*4 + 0], m.m[1*4 + 2], m.m[1*4 + 3],
+					  m.m[2*4 + 0], m.m[2*4 + 2], m.m[2*4 + 3],
+					  m.m[3*4 + 0], m.m[3*4 + 2], m.m[3*4 + 3]);
+	float d3 = det3x3(m.m[1*4 + 0], m.m[1*4 + 1], m.m[1*4 + 3],
+					  m.m[2*4 + 0], m.m[2*4 + 1], m.m[2*4 + 3],
+					  m.m[3*4 + 0], m.m[3*4 + 1], m.m[3*4 + 3]);
+	float d4 = det3x3(m.m[1*4 + 0], m.m[1*4 + 1], m.m[1*4 + 2],
+					  m.m[2*4 + 0], m.m[2*4 + 1], m.m[2*4 + 2],
+					  m.m[3*4 + 0], m.m[3*4 + 1], m.m[3*4 + 2]);
 				
 	float r = m.m[0*4 + 0] * d1 - m.m[0*4 + 1] * d2 + m.m[0*4 + 2] * d3 - m.m[0*4 + 3] * d4;
+	return r;	
+}
+
+inline double ddet(Mat4_arg m)
+{	
+	double d1 = ddet3x3(m.m[1*4 + 1], m.m[1*4 + 2], m.m[1*4 + 3],
+					  m.m[2*4 + 1], m.m[2*4 + 2], m.m[2*4 + 3],
+					  m.m[3*4 + 1], m.m[3*4 + 2], m.m[3*4 + 3]);
+	double d2 = ddet3x3(m.m[1*4 + 0], m.m[1*4 + 2], m.m[1*4 + 3],
+					  m.m[2*4 + 0], m.m[2*4 + 2], m.m[2*4 + 3],
+					  m.m[3*4 + 0], m.m[3*4 + 2], m.m[3*4 + 3]);
+	double d3 = ddet3x3(m.m[1*4 + 0], m.m[1*4 + 1], m.m[1*4 + 3],
+					  m.m[2*4 + 0], m.m[2*4 + 1], m.m[2*4 + 3],
+					  m.m[3*4 + 0], m.m[3*4 + 1], m.m[3*4 + 3]);
+	double d4 = ddet3x3(m.m[1*4 + 0], m.m[1*4 + 1], m.m[1*4 + 2],
+					  m.m[2*4 + 0], m.m[2*4 + 1], m.m[2*4 + 2],
+					  m.m[3*4 + 0], m.m[3*4 + 1], m.m[3*4 + 2]);
+				
+	double r = m.m[0*4 + 0] * d1 - m.m[0*4 + 1] * d2 + m.m[0*4 + 2] * d3 - m.m[0*4 + 3] * d4;
 	return r;	
 }
 

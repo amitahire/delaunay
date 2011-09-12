@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <climits>
 #include "assert.hh"
 #include "math/math.hh"
 #include "sparsegrid.hh"
@@ -328,12 +329,209 @@ int SparsePointGrid::NearestNeighborAcrossPlane(int from, const Plane& plane)
 
 int SparsePointGrid::PointWithMinCircumcircle(int v0, int v1)
 {
-	return -1;
+	Vec3 v0Pos = GetPos(v0);
+	Vec3 v1Pos = GetPos(v1);
+	Vec3 center = 0.5f * v0Pos + 0.5f * v1Pos;
+
+	int bestRadiusIndex = -1;
+	float bestRadius = FLT_MAX;
+	float bestRadiusSq = FLT_MAX;		
+	float searchDistMax = magnitude(center - v0Pos);
+
+	int iSearchedStart[3], iSearchedEnd[3];
+	for(int i = 0; i < 3; ++i)
+	{
+		iSearchedStart[i] = INT_MAX;
+		iSearchedEnd[i] = INT_MIN;
+	}
+
+	while(true)
+	{
+		int iStart[3];
+		int iEnd[3];
+
+		ToGrid(center - Vec3(searchDistMax, searchDistMax, searchDistMax), iStart[0], iStart[1], iStart[2]);
+		ToGrid(center + Vec3(searchDistMax, searchDistMax, searchDistMax), iEnd[0], iEnd[1], iEnd[2]);
+
+		int dim;
+		for(dim = 0; dim < 3; ++dim)
+		{
+			if(iEnd[dim] > iSearchedEnd[dim] && iStart[dim] < iSearchedStart[dim])
+				break;
+		}
+		if(dim == 3)
+			break; // We're entirely in already searched cells, so we can quit.
+
+		int zDimOff = iStart[2] * m_cellsPerDim * m_cellsPerDim;
+		for(int iz = iStart[2]; iz <= iEnd[2]; ++iz, zDimOff += m_cellsPerDim * m_cellsPerDim)
+		{
+			int yDimOff = iStart[1] * m_cellsPerDim;
+			for(int iy = iStart[1]; iy <= iEnd[1]; ++iy, yDimOff += m_cellsPerDim)
+			{
+				for(int ix = iStart[0]; ix <= iEnd[0]; ++ix)
+				{
+					if(ix >= iSearchedStart[0] && ix <= iSearchedEnd[0] &&
+						iy >= iSearchedStart[1] && iy <= iSearchedEnd[1] &&
+						iz >= iSearchedStart[2] && iz <= iSearchedEnd[2])
+						continue;
+
+					int cellIdx = ix + yDimOff + zDimOff;
+					ASSERT(cellIdx >= 0 && cellIdx < (m_cellsPerDim * m_cellsPerDim * m_cellsPerDim));
+					Cell* cell = m_cells[cellIdx];
+					if(cell)
+					{
+						AABB cellBounds;
+						cellBounds.m_min = Vec3(ix * m_cellDim + m_minGridDim, 
+								iy * m_cellDim + m_minGridDim, 
+								iz * m_cellDim + m_minGridDim);
+						cellBounds.m_max = cellBounds.m_min + Vec3(m_cellDim, m_cellDim, m_cellDim);
+
+						float distToClosestSq = DistSqAABBToPoint(cellBounds, center);
+						if( distToClosestSq < bestRadiusSq)
+						{	
+							DebugDrawAABB(cellBounds);
+							int * points = cell->m_points;
+							for(int i = 0, c = cell->m_numPoints; i < c; ++i)
+							{
+								float radiusSq;
+								Vec3 testCenter;
+								Vec3 pos = m_allPoints[points[i]].m_pos;
+								float distToPointSq = magnitude_squared(center - pos);
+								if( distToPointSq < bestRadiusSq &&
+									ComputeCircumcircle(v0Pos, v1Pos, pos, testCenter, radiusSq) && 
+									radiusSq < bestRadiusSq)
+								{
+									bestRadiusIndex = points[i];
+									bestRadiusSq = radiusSq;
+									bestRadius = sqrtf(radiusSq);
+									center = testCenter;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		for(int i = 0; i < 3; ++i)
+		{
+			iSearchedStart[i] = iSearchedStart[i] < iStart[i] ? iSearchedStart[i] : iStart[i];
+			iSearchedEnd[i] = iSearchedEnd[i] > iEnd[i] ? iSearchedEnd[i] : iEnd[i];
+		}
+	
+		if(bestRadiusIndex == -1)
+			searchDistMax += m_cellDim;
+		else
+			searchDistMax = bestRadius;
+	}
+
+	DebugDrawSphere(center, bestRadius, 0.3f, 0.3f, 0.5f, 0.3f);
+
+	return bestRadiusIndex;	
 }
 
 int SparsePointGrid::PointWithMinCircumsphere(int v0, int v1, int v2)
 {
-	return -1;
+	Vec3 v0Pos = GetPos(v0);
+	Vec3 v1Pos = GetPos(v1);
+	Vec3 v2Pos = GetPos(v2);
+	Vec3 center = 0.5f * v0Pos + 0.5f * v1Pos;
+
+	int bestRadiusIndex = -1;
+	float bestRadius = FLT_MAX;
+	float bestRadiusSq = FLT_MAX;		
+	float searchDistMax = magnitude(center - v0Pos);
+
+	int iSearchedStart[3], iSearchedEnd[3];
+	for(int i = 0; i < 3; ++i)
+	{
+		iSearchedStart[i] = INT_MAX;
+		iSearchedEnd[i] = INT_MIN;
+	}
+
+	while(true)
+	{
+		int iStart[3];
+		int iEnd[3];
+
+		ToGrid(center - Vec3(searchDistMax, searchDistMax, searchDistMax), iStart[0], iStart[1], iStart[2]);
+		ToGrid(center + Vec3(searchDistMax, searchDistMax, searchDistMax), iEnd[0], iEnd[1], iEnd[2]);
+
+		int dim;
+		for(dim = 0; dim < 3; ++dim)
+		{
+			if(iEnd[dim] > iSearchedEnd[dim] && iStart[dim] < iSearchedStart[dim])
+				break;
+		}
+		if(dim == 3)
+			break; // We're entirely in already searched cells, so we can quit.
+
+		int zDimOff = iStart[2] * m_cellsPerDim * m_cellsPerDim;
+		for(int iz = iStart[2]; iz <= iEnd[2]; ++iz, zDimOff += m_cellsPerDim * m_cellsPerDim)
+		{
+			int yDimOff = iStart[1] * m_cellsPerDim;
+			for(int iy = iStart[1]; iy <= iEnd[1]; ++iy, yDimOff += m_cellsPerDim)
+			{
+				for(int ix = iStart[0]; ix <= iEnd[0]; ++ix)
+				{
+					if(ix >= iSearchedStart[0] && ix <= iSearchedEnd[0] &&
+						iy >= iSearchedStart[1] && iy <= iSearchedEnd[1] &&
+						iz >= iSearchedStart[2] && iz <= iSearchedEnd[2])
+						continue;
+
+					int cellIdx = ix + yDimOff + zDimOff;
+					ASSERT(cellIdx >= 0 && cellIdx < (m_cellsPerDim * m_cellsPerDim * m_cellsPerDim));
+					Cell* cell = m_cells[cellIdx];
+					if(cell)
+					{
+						AABB cellBounds;
+						cellBounds.m_min = Vec3(ix * m_cellDim + m_minGridDim, 
+								iy * m_cellDim + m_minGridDim, 
+								iz * m_cellDim + m_minGridDim);
+						cellBounds.m_max = cellBounds.m_min + Vec3(m_cellDim, m_cellDim, m_cellDim);
+
+						float distToClosestSq = DistSqAABBToPoint(cellBounds, center);
+						if(distToClosestSq < bestRadiusSq)
+						{	
+							DebugDrawAABB(cellBounds);
+							int * points = cell->m_points;
+							for(int i = 0, c = cell->m_numPoints; i < c; ++i)
+							{
+								float radiusSq;
+								Vec3 testCenter;
+								Vec3 pos = m_allPoints[points[i]].m_pos;
+								float distToPointSq = magnitude_squared(center - pos);
+								if( distToPointSq < bestRadiusSq &&
+									ComputeCircumsphere(v0Pos, v1Pos, v2Pos, pos, testCenter, radiusSq) && 
+									radiusSq < bestRadiusSq)
+								{
+									bestRadiusIndex = points[i];
+									bestRadiusSq = radiusSq;
+									bestRadius = sqrtf(radiusSq);
+									center = testCenter;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		for(int i = 0; i < 3; ++i)
+		{
+			iSearchedStart[i] = iSearchedStart[i] < iStart[i] ? iSearchedStart[i] : iStart[i];
+			iSearchedEnd[i] = iSearchedEnd[i] > iEnd[i] ? iSearchedEnd[i] : iEnd[i];
+		}
+	
+		if(bestRadiusIndex == -1)
+			searchDistMax += m_cellDim;
+		else 
+			searchDistMax = bestRadius;
+	}
+
+	DebugDrawSphere(center, bestRadius, 0.3f, 0.3f, 0.5f, 0.3f);
+
+	return bestRadiusIndex;	
 }
 
 Vec3 SparsePointGrid::GetPos(int pointIdx)
