@@ -157,3 +157,17 @@ bool ComputeCircumsphere(Vec3_arg a, Vec3_arg b, Vec3_arg c, Vec3_arg d, Vec3 &o
 	return true;
 }
 
+void PlaneIntersectsTriangleList(const Plane& plane, int numTriangles, const Vec3* triangleData, int *results)
+{
+	int triangleOff = 0;
+	for(int i = 0; i < numTriangles; ++i)
+	{
+		int v0r = int(dot(plane.m_normal, triangleData[triangleOff]) - plane.m_d > 0.f);
+		int v1r = int(dot(plane.m_normal, triangleData[triangleOff+1]) - plane.m_d > 0.f) << 1;
+		int v2r = int(dot(plane.m_normal, triangleData[triangleOff+2]) - plane.m_d > 0.f) << 2;
+
+		results[i] = v0r | v1r | v2r;
+		triangleOff += 3;
+	}
+}
+

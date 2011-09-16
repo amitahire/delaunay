@@ -65,6 +65,11 @@ public:
 		ASSERT(idx >= 0 && idx < 3);
 		return (&x)[idx];
 	}
+	
+	inline float &operator[](int idx) {
+		ASSERT(idx >= 0 && idx < 3);
+		return (&x)[idx];
+	}
 
 	inline void set(float x, float y, float z) 
 		{ 

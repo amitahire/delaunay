@@ -48,7 +48,9 @@ void setup_gl()
 	glClearColor(0.1f, 0.1f, 0.1f, 1.f);
 	glEnable(GL_LINE_SMOOTH);
 	glEnable(GL_BLEND);
+	glShadeModel(GL_FLAT);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_CULL_FACE);
 	on_reshape(800, 800);
 }
 
@@ -148,6 +150,52 @@ void on_display(void)
 		for(int i = 0, c = g_numPoints; i < c; ++i)
 			glVertex3f(g_points[i].x, g_points[i].y, g_points[i].z);
 		glEnd();
+
+		glColor3f(0.8f, 0.8f, 0.8f);
+		for(int pass = 0; pass < 2; ++pass)
+		{
+			if(pass == 1)
+			{
+				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+				glEnable(GL_POLYGON_OFFSET_LINE);
+				glPolygonOffset(1.f, 1.f);
+				glColor3f(0.2f, 0.2f, 0.2f);
+			}
+
+			glBegin(GL_TRIANGLES);
+			for(int i = 0, c = s_triangulator->GetNumTetrahedrons(); i < c; ++i)
+			{
+				const Triangulator::Tetrahedron& tet = s_triangulator->GetTetrahedron(i);
+				Vec3 v0Pos = s_grid->GetPos(tet.v0);
+				Vec3 v1Pos = s_grid->GetPos(tet.v1);
+				Vec3 v2Pos = s_grid->GetPos(tet.v2);
+				Vec3 v3Pos = s_grid->GetPos(tet.v3);
+
+				// Bottom
+				glVertex3fv(&v0Pos.x);
+				glVertex3fv(&v1Pos.x);
+				glVertex3fv(&v2Pos.x);
+
+				// Side 0
+				glVertex3fv(&v0Pos.x);
+				glVertex3fv(&v2Pos.x);
+				glVertex3fv(&v3Pos.x);
+
+				// Side 1
+				glVertex3fv(&v1Pos.x);
+				glVertex3fv(&v3Pos.x);
+				glVertex3fv(&v2Pos.x);
+
+				// Side 2
+				glVertex3fv(&v0Pos.x);
+				glVertex3fv(&v3Pos.x);
+				glVertex3fv(&v1Pos.x);
+			}
+			glEnd();
+		}
+		glDisable(GL_POLYGON_OFFSET_LINE);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		glPolygonOffset(0.f, 0.f);
 	}
 	RenderDebugDraw();
 
