@@ -43,9 +43,14 @@ void Triangulator::Step()
 			if(curNode->m_activeFaces.Empty())
 			{
 				m_nodesTodo.pop_front();
-
 				delete curNode;
 				curNode = 0;
+
+				if(!m_nodesTodo.empty())
+				{
+					// start a new node
+					InitActiveFaces(m_nodesTodo.front());
+				}
 			}
 			else
 				break;
@@ -56,7 +61,6 @@ void Triangulator::Step()
 			ContinueWall(curNode);
 		}
 	}
-	
 }
 	
 void Triangulator::StartWall(SplitNode* node)
@@ -68,7 +72,7 @@ void Triangulator::StartWall(SplitNode* node)
 		return;
 	DebugDrawPoint(m_grid->GetPos(v0), 1.f, 0.f, 0.f);
 
-	Plane splitPlane, constraintPlane;
+	Plane splitPlane;
 	MakeSplitPlane(splitPlane, node->m_splitDir, node->m_bounds);
 
 	DebugDrawPlane(node->m_bounds, splitPlane);
@@ -155,6 +159,7 @@ void Triangulator::AddSimplex(SplitNode* node, const Plane& plane, int v0, int v
 				bounds.m_min[node->m_splitDir] = 0.5f * bounds.m_min[node->m_splitDir]
 					+ 0.5f * bounds.m_max[node->m_splitDir];
 				node->m_children[0] = new SplitNode((node->m_splitDir + 1) % 3, bounds);
+				m_nodesTodo.push_back(node->m_children[0]);
 			}
 			node->m_children[0]->m_activeFaces.AddOrRemove(indices[0], indices[1], indices[2]);
 				
@@ -167,6 +172,7 @@ void Triangulator::AddSimplex(SplitNode* node, const Plane& plane, int v0, int v
 				bounds.m_max[node->m_splitDir] = 0.5f * bounds.m_min[node->m_splitDir]
 					+ 0.5f * bounds.m_max[node->m_splitDir];
 				node->m_children[1] = new SplitNode((node->m_splitDir + 1) % 3, bounds);
+				m_nodesTodo.push_back(node->m_children[1]);
 			}
 			node->m_children[1]->m_activeFaces.AddOrRemove(indices[0], indices[1], indices[2]);
 		} 
@@ -175,6 +181,55 @@ void Triangulator::AddSimplex(SplitNode* node, const Plane& plane, int v0, int v
 			node->m_activeFaces.AddOrRemove(indices[0], indices[1], indices[2]);
 		}
 	}
+}
+
+void Triangulator::InitActiveFaces(SplitNode* node)
+{
+	Plane splitPlane;
+	MakeSplitPlane(splitPlane, node->m_splitDir, node->m_bounds);
+
+	std::vector<int> allFaceIndices;
+	node->m_activeFaces.GetAllFaces(allFaceIndices);
+	
+	std::vector<Vec3> allFaceData(allFaceIndices.size());
+	for(int i = 0, c = allFaceIndices.size(); i < c; ++i)
+		allFaceData[i] = m_grid->GetPos(allFaceIndices[i]);
+
+	std::vector<int> allResults(allFaceIndices.size() / 3);
+	PlaneIntersectsTriangleList(splitPlane, allResults.size(), &allFaceData[0], &allResults[0]);
+
+	for(int iIndex = 0, iResult = 0, c = allFaceIndices.size(); iIndex < c; iIndex += 3, iResult += 1)
+	{
+		int *indices = &allFaceIndices[iIndex];	
+		if(allResults[iResult] == TRI_PLANE_INTERSECT_ALL_ABOVE)
+		{
+			node->m_activeFaces.Remove(indices[0], indices[1], indices[2]);
+			if(node->m_children[0] == 0)
+			{
+				AABB bounds = node->m_bounds;
+				bounds.m_min[node->m_splitDir] = 0.5f * bounds.m_min[node->m_splitDir]
+					+ 0.5f * bounds.m_max[node->m_splitDir];
+				node->m_children[0] = new SplitNode((node->m_splitDir + 1) % 3, bounds);
+				m_nodesTodo.push_back(node->m_children[0]);
+			}
+			node->m_children[0]->m_activeFaces.AddOrRemove(indices[0], indices[1], indices[2]);
+				
+		}
+		else if(allResults[iResult] == TRI_PLANE_INTERSECT_ALL_BELOW)
+		{
+			node->m_activeFaces.Remove(indices[0], indices[1], indices[2]);
+			if(node->m_children[1] == 0)
+			{
+				AABB bounds = node->m_bounds;
+				bounds.m_max[node->m_splitDir] = 0.5f * bounds.m_min[node->m_splitDir]
+					+ 0.5f * bounds.m_max[node->m_splitDir];
+				node->m_children[1] = new SplitNode((node->m_splitDir + 1) % 3, bounds);
+				m_nodesTodo.push_back(node->m_children[1]);
+			}
+			node->m_children[1]->m_activeFaces.AddOrRemove(indices[0], indices[1], indices[2]);
+		} 
+	}
+
 }
 
 void Triangulator::ContinueWall(SplitNode* node)
@@ -189,7 +244,7 @@ void Triangulator::ContinueWall(SplitNode* node)
 	DebugDrawPlane(node->m_bounds, splitPlane);
 
 	int verts[3];
-	if(!node->m_activeFaces.GetNext(verts))
+	if(!node->m_activeFaces.GetFront(verts))
 	{
 		printf("Could not find next active face.\n");
 		return;
@@ -299,7 +354,7 @@ bool TriangleHashList::AddOrRemove(int v0, int v1, int v2)
 	return true;
 }
 
-bool TriangleHashList::GetNext(int *verts)
+bool TriangleHashList::GetFront(int *verts)
 {
 	if(m_lastInserted)
 	{
@@ -317,14 +372,12 @@ bool TriangleHashList::GetNext(int *verts)
 void TriangleHashList::DebugDrawFaces(const SparsePointGrid * grid)
 {
 	HashValue * cur = m_lastInserted;
-	printf("---\n");
 	while(cur)
 	{	
 		int v1 = cur->v1;
 		int v2 = cur->v2;
 		if(!cur->frontFacing)
 			Swap(v1,v2);
-		printf(" %d, %d, %d\n", cur->v0, cur->v1, cur->v2);
 		Vec3 v0Pos = grid->GetPos(cur->v0);
 		Vec3 v1Pos = grid->GetPos(v1);
 		Vec3 v2Pos = grid->GetPos(v2);
@@ -334,8 +387,6 @@ void TriangleHashList::DebugDrawFaces(const SparsePointGrid * grid)
 
 		cur = cur->nextInserted;
 	}
-
-	printf("hits/col = %f\n", m_stats.numInsertions / float(m_stats.numCollisions));
 }
 
 bool TriangleHashList::Remove(int v0, int v1, int v2)
@@ -402,5 +453,22 @@ bool TriangleHashList::RemoveFromBuckets(int idx, int v0, int v1, int v2)
 		value = value->next;
 	}
 	return false;
+}
+
+void TriangleHashList::GetAllFaces(std::vector<int>& outIndices) const
+{
+	HashValue* cur = m_lastInserted;
+	while(cur)
+	{
+		int v0 = cur->v0;
+		int v1 = cur->v1;
+		int v2 = cur->v2;
+		if(!cur->frontFacing)
+			Swap(v1,v2);
+		outIndices.push_back(v0);
+		outIndices.push_back(v1);
+		outIndices.push_back(v2);
+		cur = cur->nextInserted;
+	}
 }
 

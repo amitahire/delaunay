@@ -15,7 +15,7 @@ enum AppState
 	STATE_Init,
 	STATE_BuildGrid,
 	STATE_Triangulating,
-	STATE_DisplayPoints,
+	STATE_DisplayVolumeMesh,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -28,12 +28,14 @@ static float g_eyeDistTarget = 310.f;
 static Vec3 g_center(0,0,0);
 static Vec3 g_centerTarget(0.f, 0.f, 0.f);
 static Vec3 *g_points;
-static int g_numPoints = 100;
+static int g_numPoints = 1000;
 static unsigned int g_seed = 12345U;
 static SparsePointGrid *s_grid;
 static Triangulator *s_triangulator;
 static bool s_bStepTriangulator = false;
 static timespec g_last_time;
+static bool g_bAuto = false;
+static bool g_bDebugRender = true;
 
 ////////////////////////////////////////////////////////////////////////////////
 // GLUT callbacks
@@ -138,10 +140,9 @@ void on_idle(void)
 		}
 		else
 		{
-			if(s_bStepTriangulator)
+			if(s_bStepTriangulator || g_bAuto)
 			{
 				ClearDebugDraw();
-				printf("Step\n");
 				s_triangulator->Step();
 				s_bStepTriangulator = false;
 				glutPostRedisplay();
@@ -160,12 +161,16 @@ void on_idle(void)
 			g_centerTarget = (v0Pos + v1Pos + v2Pos + v3Pos) / 4.f;
 		}
 	}
+	else if(g_state == STATE_DisplayVolumeMesh)
+	{
+		g_centerTarget = Vec3(0,0,0);
+	}
 }
 
 void on_display(void)
 {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	// camera
 
@@ -179,15 +184,7 @@ void on_display(void)
 
 	// point cloud
 
-	if(g_state == STATE_DisplayPoints)
-	{
-		glColor3f(1,1,1);
-		glBegin(GL_POINTS);
-		for(int i = 0, c = g_numPoints; i < c; ++i)
-			glVertex3f(g_points[i].x, g_points[i].y, g_points[i].z);
-		glEnd();
-	}
-	else if(g_state == STATE_Triangulating)
+	if(g_state == STATE_Triangulating)
 	{
 		for(int i = 0, c = s_grid->GetNumPoints(); i < c; ++i)
 		{
@@ -217,9 +214,9 @@ void on_display(void)
 			if(pass == 1)
 			{
 				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-				glLineWidth(3.f);
-				glEnable(GL_POLYGON_OFFSET_LINE);
-				glPolygonOffset(1.f, -10.f);
+				glLineWidth(1.f);
+				glEnable(GL_POLYGON_OFFSET_FILL);
+				glPolygonOffset(0.f, 0.01f);
 				glColor3f(0.2f, 0.2f, 0.2f);
 			}
 
@@ -259,10 +256,63 @@ void on_display(void)
 		glPolygonOffset(0.f, 0.f);
 		glLineWidth(1.f);
 	}
-	//glEnable(GL_CULL_FACE);
-	glDisable(GL_DEPTH_TEST);
-	RenderDebugDraw();
-	glDisable(GL_CULL_FACE);
+	else if(g_state == STATE_DisplayVolumeMesh)
+	{
+		glEnable(GL_CULL_FACE);
+		glColor4f(0.8f, 0.8f, 0.8f, 1.f);
+		for(int pass = 0; pass < 2; ++pass)
+		{
+			if(pass == 1)
+			{
+				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+				glLineWidth(1.f);
+				glEnable(GL_POLYGON_OFFSET_FILL);
+				glPolygonOffset(0.f, 0.001f);
+				glColor3f(0.2f, 0.2f, 0.2f);
+			}
+
+			glBegin(GL_TRIANGLES);
+			for(int i = 0, c = s_triangulator->GetNumTetrahedrons(); i < c; ++i)
+			{
+				const Triangulator::Tetrahedron& tet = s_triangulator->GetTetrahedron(i);
+				Vec3 v0Pos = s_grid->GetPos(tet.v0);
+				Vec3 v1Pos = s_grid->GetPos(tet.v1);
+				Vec3 v2Pos = s_grid->GetPos(tet.v2);
+				Vec3 v3Pos = s_grid->GetPos(tet.v3);
+
+				// Bottom
+				glVertex3fv(&v0Pos.x);
+				glVertex3fv(&v1Pos.x);
+				glVertex3fv(&v2Pos.x);
+
+				// Side 0
+				glVertex3fv(&v0Pos.x);
+				glVertex3fv(&v2Pos.x);
+				glVertex3fv(&v3Pos.x);
+
+				// Side 1
+				glVertex3fv(&v1Pos.x);
+				glVertex3fv(&v3Pos.x);
+				glVertex3fv(&v2Pos.x);
+
+				// Side 2
+				glVertex3fv(&v0Pos.x);
+				glVertex3fv(&v3Pos.x);
+				glVertex3fv(&v1Pos.x);
+			}
+			glEnd();
+		}
+		glDisable(GL_POLYGON_OFFSET_LINE);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		glPolygonOffset(0.f, 0.f);
+		glLineWidth(1.f);
+	}
+
+	if(g_bDebugRender)
+	{
+		glDisable(GL_DEPTH_TEST);
+		RenderDebugDraw();
+	}
 
 	glutSwapBuffers();
 }
@@ -324,6 +374,22 @@ void on_motion(int x, int y)
 // Main
 int main(int argc, char** argv)
 {
+	for(int i = 1; i < argc; ++i)
+	{
+		if(strcasecmp(argv[i], "--auto") == 0)
+		{
+			g_bAuto = true;
+		}
+		else if(strcasecmp(argv[i], "--nodebug") == 0)
+		{	
+			g_bDebugRender = false;
+		}
+	}
+
+	if(g_bAuto)
+		printf("Auto stepping...\n");
+	if(!g_bDebugRender)
+		printf("Debug rendering disabled...\n");
 	glutInit(&argc, argv);
 	glutCreateWindow("delaunay");
 	g_width = 800; g_height = 800;

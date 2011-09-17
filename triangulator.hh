@@ -35,7 +35,8 @@ public:
 
 	bool AddOrRemove(int v0, int v1, int v2);
 	bool Remove(int v0, int v1, int v2);
-	bool GetNext(int *verts);
+	bool GetFront(int *verts);
+	void GetAllFaces(std::vector<int>& outFaceIndices) const;	
 	bool Empty() const { return m_lastInserted == 0; }
 
 	void DebugDrawFaces(const SparsePointGrid * grid);
@@ -89,6 +90,7 @@ private:
 	void StartWall(SplitNode* node);
 	void ContinueWall(SplitNode* node);
 	void AddSimplex(SplitNode* node, const Plane& plane, int v0, int v1, int v2, int v3);
+	void InitActiveFaces(SplitNode* node);
 };
 
 

@@ -257,12 +257,12 @@ static void ddRenderPlanes()
 
 		for(int j = 1; j < numPoints; ++j)
 		{	
-			Vec3 jProj = points[j] - plane.m_normal * dot(plane.m_normal, points[j]);
-			float angleJ = AngleWrap(atan2(dot(upVec, jProj), dot(sideVec, jProj)));
+			Vec3 toPointJ = points[j] - center;
+			float angleJ = AngleWrap(atan2(dot(upVec, toPointJ), dot(sideVec, toPointJ)));
 			for(int k = j+1; k < numPoints; ++k)
 			{
-				Vec3 kProj = points[k] - plane.m_normal * dot(plane.m_normal, points[k]);
-				float angleK = AngleWrap(atan2(dot(upVec, kProj), dot(sideVec, kProj)));
+				Vec3 toPointK = points[k] - center;
+				float angleK = AngleWrap(atan2(dot(upVec, toPointK), dot(sideVec, toPointK)));
 				if(angleK < angleJ) 
 				{
 					angleJ = angleK;

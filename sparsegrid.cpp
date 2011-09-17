@@ -458,7 +458,7 @@ int SparsePointGrid::PointWithMinCircumsphere(int v0, int v1, int v2, int flags)
 	Vec3 center = inv_w * v0Pos + inv_w * v1Pos + inv_w * v2Pos;
 
 	Plane trianglePlane;
-	trianglePlane.m_normal = cross(v1Pos - v0Pos, v2Pos - v0Pos);
+	trianglePlane.m_normal = normalize(cross(v1Pos - v0Pos, v2Pos - v0Pos));
 	trianglePlane.m_d = dot(v0Pos, trianglePlane.m_normal);
 
 	if( !(flags & CONSTRAINT_POINT_ABOVE) )
@@ -537,7 +537,7 @@ int SparsePointGrid::PointWithMinCircumsphere(int v0, int v1, int v2, int flags)
 								float distToPointSq = magnitude_squared(center - pos);
 								float pointDist = dot(trianglePlane.m_normal, pos) - trianglePlane.m_d;
 								
-								if(	pointDist > 0.f &&
+								if(	pointDist > EPSILON &&
 									distToPointSq < bestRadiusSq &&
 									ComputeCircumsphere(v0Pos, v1Pos, v2Pos, pos, testCenter, radiusSq) &&
 									radiusSq < bestRadiusSq)
@@ -575,7 +575,6 @@ int SparsePointGrid::PointWithMinCircumsphere(int v0, int v1, int v2, int flags)
 	DebugDrawVector(inv_w * v0Pos + inv_w * v1Pos + inv_w * v2Pos, 3.f * normalize(trianglePlane.m_normal), 
 		1.f, 0.f, 1.f, 1.f);
 	DebugDrawSphere(center, sqrtf(bestRadiusSq), 0.3f, 0.3f, 0.5f, 0.3f);
-
 	return bestRadiusIndex;	
 }
 
