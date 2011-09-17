@@ -149,7 +149,9 @@ void Triangulator::AddSimplex(SplitNode* node, const Plane& plane, int v0, int v
 	PlaneIntersectsTriangleList(plane, 4, triangleData, results);
 
 	// at least one triangle should be intersecting the middle plane.
-	ASSERT( results[0] != results[1] || results[0] != results[2] || results[0] != results[3] );
+	ASSERT( results[0] != results[1] || results[0] != results[2] || results[0] != results[3] ||
+		results[1] != results[2] || results[1] != results[3] ||
+		results[2] != results[3]);
 	for(int i = 0; i < 4; ++i)
 	{
 		int *indices = &triangleIndices[3*i];

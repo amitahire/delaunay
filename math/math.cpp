@@ -158,9 +158,9 @@ void PlaneIntersectsTriangleList(const Plane& plane, int numTriangles, const Vec
 	int triangleOff = 0;
 	for(int i = 0; i < numTriangles; ++i)
 	{
-		int v0r = int(dot(plane.m_normal, triangleData[triangleOff]) - plane.m_d >= 0.f);
-		int v1r = int(dot(plane.m_normal, triangleData[triangleOff+1]) - plane.m_d >= 0.f) << 1;
-		int v2r = int(dot(plane.m_normal, triangleData[triangleOff+2]) - plane.m_d >= 0.f) << 2;
+		int v0r = (int(dot(plane.m_normal, triangleData[triangleOff]) - plane.m_d >= 0.f)) & 1;
+		int v1r = (int(dot(plane.m_normal, triangleData[triangleOff+1]) - plane.m_d >= 0.f) & 1) << 1 ;
+		int v2r = (int(dot(plane.m_normal, triangleData[triangleOff+2]) - plane.m_d >= 0.f) & 1) << 2 ;
 
 		results[i] = v0r | v1r | v2r;
 		triangleOff += 3;
