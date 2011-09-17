@@ -1,8 +1,8 @@
-SRC = delaunay.cpp debugdraw.cpp math/math.cpp sparsegrid.cpp triangulator.cpp
+SRC = delaunay.cpp debugdraw.cpp math/math.cpp sparsegrid.cpp triangulator.cpp draw.cpp
 OBJS = $(SRC:.cpp=.o)
 
 %.o : %.cpp
-	g++ -c -o $*.o -g -Wall -I. -DDEBUG -DLINUX $*.cpp
+	g++ -c -o $*.o -g -Wall -O3 -I. -DDEBUG -DLINUX $*.cpp
 
 delaunay : $(OBJS)
 	g++ -o delaunay $(OBJS) -lm -lGL -lGLU -lglut

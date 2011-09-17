@@ -14,6 +14,8 @@ void DebugDrawVector(Vec3_arg from, Vec3_arg vec, float r, float g, float b, flo
 void DebugDrawLine(Vec3_arg from, Vec3_arg to, float r, float g, float b, float a);
 void RenderDebugDraw();
 void ClearDebugDraw();
+void EnableDebugDraw();
+void DisableDebugDraw();
 
 #endif
 

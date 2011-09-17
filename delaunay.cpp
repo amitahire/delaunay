@@ -5,10 +5,11 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <GL/glut.h>
-#include <debugdraw.hh>
-#include <math/math.hh>
-#include <sparsegrid.hh>
-#include <triangulator.hh>
+#include "debugdraw.hh"
+#include "draw.hh"
+#include "math/math.hh"
+#include "sparsegrid.hh"
+#include "triangulator.hh"
 
 enum AppState
 {
@@ -36,6 +37,13 @@ static bool s_bStepTriangulator = false;
 static timespec g_last_time;
 static bool g_bAuto = false;
 static bool g_bDebugRender = true;
+static bool g_bEnableCutaway = true;
+static bool g_bEnableAnimCutaway = false;
+static bool g_bOneStep = false;
+static int g_gridDims = 64;
+static float g_cutawayParam = 0.f;
+static float g_cutawayParamTarget = 1.f;
+static int g_cutawayDir = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
 // GLUT callbacks
@@ -95,7 +103,7 @@ void on_idle(void)
 	float dt = diffMsec / 1000.f;
 
 
-	if(dt > 1/60.f)
+	if(dt > 1/30.f)
 	{
 		g_last_time = current_time;
 		float t = 0.9f * dt;
@@ -107,7 +115,6 @@ void on_idle(void)
 		{
 			glutPostRedisplay();
 		}
-
 	}
 
 	if(g_state == STATE_Init)
@@ -120,7 +127,7 @@ void on_idle(void)
 	else if(g_state == STATE_BuildGrid)
 	{
 		printf("building grid...\n");
-		s_grid = new SparsePointGrid(256.f, 64);
+		s_grid = new SparsePointGrid(256.f, g_gridDims);
 		s_grid->InsertPoints(g_points, g_numPoints);
 		++g_state;
 		glutPostRedisplay();
@@ -130,40 +137,77 @@ void on_idle(void)
 	}
 	else if(g_state == STATE_Triangulating)
 	{
-		if(s_triangulator->IsDone())
+		if(g_bOneStep)
 		{
 			ClearDebugDraw();
-			printf("Done!\n");
-			// extract triangulation? for now just let the s_triangulator stay in mem
+			DisableDebugDraw();
+
+			int stepCount = 0;
+			printf("*\r");
+			char progress[] = { '/','-','\\', '|' };
+			while(!s_triangulator->IsDone())
+			{
+				s_triangulator->Step();
+				++stepCount;
+				int idx = (stepCount / 100) % sizeof(progress);
+				printf("%c (%d)\r", progress[idx], stepCount);
+			}
+
+			EnableDebugDraw();
+			printf("\rDone (Single Step)!\n");
 			++g_state;
 			glutPostRedisplay();
 		}
 		else
 		{
-			if(s_bStepTriangulator || g_bAuto)
+			if(s_triangulator->IsDone())
 			{
 				ClearDebugDraw();
-				s_triangulator->Step();
-				s_bStepTriangulator = false;
+				printf("Done!\n");
+				// extract triangulation? for now just let the s_triangulator stay in mem
+				++g_state;
 				glutPostRedisplay();
 			}
-		}
+			else
+			{
+				if(s_bStepTriangulator || g_bAuto)
+				{
+					ClearDebugDraw();
+					s_triangulator->Step();
+					s_bStepTriangulator = false;
+					glutPostRedisplay();
+				}
+			}
 
-		int lastTet = s_triangulator->GetNumTetrahedrons() - 1;
-		if(lastTet >= 0)
-		{
-			const Triangulator::Tetrahedron& tet = s_triangulator->GetTetrahedron(lastTet);
-			Vec3 v0Pos = s_grid->GetPos(tet.v0);
-			Vec3 v1Pos = s_grid->GetPos(tet.v1);
-			Vec3 v2Pos = s_grid->GetPos(tet.v2);
-			Vec3 v3Pos = s_grid->GetPos(tet.v3);
+			int lastTet = s_triangulator->GetNumTetrahedrons() - 1;
+			if(lastTet >= 0)
+			{
+				const Triangulator::Tetrahedron& tet = s_triangulator->GetTetrahedron(lastTet);
+				Vec3 v0Pos = s_grid->GetPos(tet.v0);
+				Vec3 v1Pos = s_grid->GetPos(tet.v1);
+				Vec3 v2Pos = s_grid->GetPos(tet.v2);
+				Vec3 v3Pos = s_grid->GetPos(tet.v3);
 
-			g_centerTarget = (v0Pos + v1Pos + v2Pos + v3Pos) / 4.f;
+				g_centerTarget = (v0Pos + v1Pos + v2Pos + v3Pos) / 4.f;
+			}
 		}
 	}
 	else if(g_state == STATE_DisplayVolumeMesh)
 	{
 		g_centerTarget = Vec3(0,0,0);
+		if(g_bEnableAnimCutaway && dt > 1/30.f)
+		{
+			float delta = 0.1f * ((g_cutawayParamTarget == 0.f) ? -dt : dt);
+			g_cutawayParam = Clamp(g_cutawayParam + delta, 0.f, 1.f);
+			if(fabs(g_cutawayParam - g_cutawayParamTarget) < EPSILON)
+			{
+			//	if(g_cutawayParamTarget == 0.f) {
+			//		g_cutawayDir = (g_cutawayDir + 1) % 3;
+			//	}
+				g_cutawayParamTarget = (1.f - g_cutawayParamTarget);
+			}
+			glutPostRedisplay();
+		}
 	}
 }
 
@@ -258,6 +302,13 @@ void on_display(void)
 	}
 	else if(g_state == STATE_DisplayVolumeMesh)
 	{
+		Plane cutaway;
+		cutaway.m_normal = Vec3(g_cutawayDir == 0, g_cutawayDir == 1, g_cutawayDir == 2);
+		float cutaway_t = sin( g_cutawayParam * M_PI / 2.f ) ;
+		const AABB &allPointsAABB = s_grid->GetAllPointsAABB();
+		cutaway.m_d = dot((1.f - cutaway_t) * allPointsAABB.m_min +
+			cutaway_t * allPointsAABB.m_max, cutaway.m_normal);
+
 		glEnable(GL_CULL_FACE);
 		glColor4f(0.8f, 0.8f, 0.8f, 1.f);
 		for(int pass = 0; pass < 2; ++pass)
@@ -279,6 +330,14 @@ void on_display(void)
 				Vec3 v1Pos = s_grid->GetPos(tet.v1);
 				Vec3 v2Pos = s_grid->GetPos(tet.v2);
 				Vec3 v3Pos = s_grid->GetPos(tet.v3);
+				
+				if(g_bEnableCutaway)
+				{
+					if(dot(cutaway.m_normal, v0Pos) - cutaway.m_d > 0.f) continue;
+					if(dot(cutaway.m_normal, v1Pos) - cutaway.m_d > 0.f) continue;
+					if(dot(cutaway.m_normal, v2Pos) - cutaway.m_d > 0.f) continue;
+					if(dot(cutaway.m_normal, v3Pos) - cutaway.m_d > 0.f) continue;
+				}
 
 				// Bottom
 				glVertex3fv(&v0Pos.x);
@@ -306,6 +365,8 @@ void on_display(void)
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		glPolygonOffset(0.f, 0.f);
 		glLineWidth(1.f);
+		
+		DrawPlane(allPointsAABB, cutaway);
 	}
 
 	if(g_bDebugRender)
@@ -384,13 +445,45 @@ int main(int argc, char** argv)
 		{	
 			g_bDebugRender = false;
 		}
+		else if(strcasecmp(argv[i], "--cutaway") == 0)
+		{
+			g_bEnableCutaway = true;
+		}
+		else if(strcasecmp(argv[i], "--animcutaway") == 0)
+		{
+			g_bEnableAnimCutaway = true;
+			g_bEnableCutaway = true;
+		}
+		else if(strcasecmp(argv[i], "--skip") == 0)
+		{
+			g_bOneStep = true;
+		}
+		else if(strcasecmp(argv[i], "--numpoints") == 0 && i + 1 < argc)
+		{
+			++i;
+			g_numPoints = Max(atoi(argv[i]), 3);
+			printf("Setting num points to %d\n", g_numPoints);
+		}
+		else if(strcasecmp(argv[i], "--cellcount") == 0 && i + 1 < argc)
+		{
+			++i;
+			g_gridDims = Max(4, atoi(argv[i]));
+			printf("Setting Uniform grid to %dx%dx%d\n", g_gridDims, g_gridDims, g_gridDims);
+		}
 	}
 
 	if(g_bAuto)
 		printf("Auto stepping...\n");
 	if(!g_bDebugRender)
-		printf("Debug rendering disabled...\n");
+		printf("Debug rendering disabled.\n");
+	if(g_bEnableCutaway)
+		printf("Using cutaway plane for final display.\n");
+	if(g_bEnableAnimCutaway)
+		printf("Aanimating cutaway on completion.\n");
+	if(g_bOneStep)
+		printf("Skipping to the end of triangulatization.\n");
 	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 	glutCreateWindow("delaunay");
 	g_width = 800; g_height = 800;
 	glutInitWindowSize( g_width, g_height );

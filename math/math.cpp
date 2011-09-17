@@ -58,7 +58,7 @@ bool AABBAbovePlane(const AABB& aabb, const Plane& plane)
 	float radius = fabs(diff[0]) + fabs(diff[1]) + fabs(diff[2]);
 	Vec3 center = aabb.m_min + diff;
 	float planeDist = dot(plane.m_normal, center) - plane.m_d;
-	return planeDist > -radius;
+	return planeDist >= -radius;
 }
 
 Vec3 MakeSplitNormal(int splitdir)
@@ -103,10 +103,6 @@ bool ComputeCircumcircle(Vec3_arg a, Vec3_arg b, Vec3_arg c, Vec3& outCenter, fl
 	outCenter = abHalf + t * abNormal ;
 	outRadiusSq = magnitude_squared(a - outCenter);
 	
-	printf("circle radius to each point: %f %f %f\n",
-		magnitude(a - outCenter),
-		magnitude(b - outCenter),
-		magnitude(c - outCenter));
 	return true;
 
 }
@@ -162,9 +158,9 @@ void PlaneIntersectsTriangleList(const Plane& plane, int numTriangles, const Vec
 	int triangleOff = 0;
 	for(int i = 0; i < numTriangles; ++i)
 	{
-		int v0r = int(dot(plane.m_normal, triangleData[triangleOff]) - plane.m_d > 0.f);
-		int v1r = int(dot(plane.m_normal, triangleData[triangleOff+1]) - plane.m_d > 0.f) << 1;
-		int v2r = int(dot(plane.m_normal, triangleData[triangleOff+2]) - plane.m_d > 0.f) << 2;
+		int v0r = int(dot(plane.m_normal, triangleData[triangleOff]) - plane.m_d >= 0.f);
+		int v1r = int(dot(plane.m_normal, triangleData[triangleOff+1]) - plane.m_d >= 0.f) << 1;
+		int v2r = int(dot(plane.m_normal, triangleData[triangleOff+2]) - plane.m_d >= 0.f) << 2;
 
 		results[i] = v0r | v1r | v2r;
 		triangleOff += 3;

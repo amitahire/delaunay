@@ -61,7 +61,7 @@ private:
 		SplitNode(int dir, const AABB& bounds) 
 			: m_splitDir(dir)
 			, m_bounds(bounds)
-			, m_activeFaces( Max(1,int(bounds.m_max[dir] - bounds.m_min[dir])))
+			, m_activeFaces( Max(4,4*int(bounds.m_max[dir] - bounds.m_min[dir])))
 		{
 			m_children[0] = m_children[1] = 0;
 		}
