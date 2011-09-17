@@ -37,24 +37,53 @@ struct ddSphere
 	float r,g,b,a;
 };
 
+struct ddTri
+{
+	ddTri(Vec3_arg pos0, Vec3_arg pos1, Vec3_arg pos2, float r, float g, float b, float a)
+		: pos0(pos0)
+		, pos1(pos1)
+		, pos2(pos2)
+		, r(r), g(g), b(b), a(a) 
+	{}
+
+	Vec3 pos0, pos1, pos2;
+	float r,g,b,a;
+};
+
+struct ddVec
+{
+	ddVec(Vec3_arg from, Vec3_arg vec, float r, float g, float b, float a)
+		: from(from), vec(vec), r(r), g(g), b(b), a(a)
+		{}
+	
+	Vec3 from, vec;
+	float r,g,b,a;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 // Global State for debug rendering
 static std::vector< AABB > s_ddAABBs;
 static std::vector< ddPoint > s_ddPoints;
 static std::vector< ddPlane > s_ddPlanes;
 static std::vector< ddSphere > s_ddSpheres;
+static std::vector< ddTri > s_ddTris;
+static std::vector< ddVec > s_ddVecs;
 void ClearDebugDraw()
 {
 	s_ddAABBs.clear();
 	s_ddPoints.clear();	
 	s_ddPlanes.clear();
 	s_ddSpheres.clear();
+	s_ddTris.clear();
+	s_ddVecs.clear();
 }
 
 static void ddRenderAABBs();
 static void ddRenderPoints();
 static void ddRenderPlanes();
 static void ddRenderSpheres(); 
+static void ddRenderTris();
+static void ddRenderVecs();
 
 void RenderDebugDraw()
 {
@@ -62,6 +91,8 @@ void RenderDebugDraw()
 	ddRenderPoints();
 	ddRenderPlanes();
 	ddRenderSpheres();
+	ddRenderTris();
+	ddRenderVecs();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -284,6 +315,35 @@ static void ddRenderSpheres()
 	}
 }
 
+static void ddRenderTris()
+{
+	glBegin(GL_TRIANGLES);
+	for(int i = 0, c = s_ddTris.size(); i < c; ++i)
+	{
+		ddTri & tri = s_ddTris[i];
+		glColor4f(tri.r, tri.g, tri.b, tri.a);
+		glVertex3fv(&tri.pos0.x);
+		glVertex3fv(&tri.pos1.x);
+		glVertex3fv(&tri.pos2.x);
+	}
+	glEnd();
+}
+
+static void ddRenderVecs()
+{
+	glBegin(GL_LINES);
+	for(int i = 0, c = s_ddVecs.size(); i < c; ++i)
+	{
+		ddVec & vec = s_ddVecs[i];
+		Vec3 to = vec.from + vec.vec;
+		glColor4f(vec.r, vec.g, vec.b, vec.a);
+		glVertex3fv(&vec.from.x);
+		glVertex3fv(&to.x);
+	}
+	glEnd();
+	
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Append functions
 
@@ -307,3 +367,17 @@ void DebugDrawSphere(Vec3_arg center, float radius, float r, float g, float b, f
 	s_ddSpheres.push_back( ddSphere(center, radius, r, g, b, a) );
 }
 
+void DebugDrawTriangle(Vec3_arg pos0, Vec3_arg pos1, Vec3_arg pos2, float r, float g, float b, float a)
+{
+	s_ddTris.push_back( ddTri(pos0, pos1, pos2, r, g, b, a) );
+}
+
+void DebugDrawVector(Vec3_arg from, Vec3_arg vec, float r, float g, float b, float a)
+{
+	s_ddVecs.push_back( ddVec(from, vec, r, g, b, a) );
+}
+
+void DebugDrawLine(Vec3_arg from, Vec3_arg to, float r, float g, float b, float a)
+{
+	s_ddVecs.push_back( ddVec(from, to - from, r, g, b, a) );
+}

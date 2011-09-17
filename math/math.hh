@@ -18,7 +18,7 @@ struct Plane
 enum TriPlaneIntersectType
 {
 	TRI_PLANE_INTERSECT_ALL_BELOW = 0x0,
-	TRI_PLANE_INTERSECT_ALL_ABOVE = 0x0111,
+	TRI_PLANE_INTERSECT_ALL_ABOVE = 0x07,
 };
 
 float DistToPlane(Vec3_arg p, const Plane& plane);

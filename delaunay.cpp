@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cmath>
 #include <cstdlib>
+#include <ctime>
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <GL/glut.h>
@@ -23,9 +24,11 @@ enum AppState
 static int g_state = STATE_Init;
 static int g_width, g_height;
 static float g_eyeDist = 310.f, g_pitch = M_PI / 4.f, g_yaw = M_PI / 4.f;
+static float g_eyeDistTarget = 310.f;
 static Vec3 g_center(0,0,0);
+static Vec3 g_centerTarget(0.f, 0.f, 0.f);
 static Vec3 *g_points;
-static int g_numPoints = 1000;
+static int g_numPoints = 100;
 static unsigned int g_seed = 12345U;
 static SparsePointGrid *s_grid;
 static Triangulator *s_triangulator;
@@ -50,7 +53,6 @@ void setup_gl()
 	glEnable(GL_BLEND);
 	glShadeModel(GL_FLAT);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_CULL_FACE);
 	on_reshape(800, 800);
 }
 
@@ -75,8 +77,34 @@ void generate_points()
 	}
 }
 
+timespec g_last_time;
 void on_idle(void)
 {
+	timespec current_time;
+	clock_gettime(CLOCK_MONOTONIC, &current_time);
+
+	time_t diffSec = current_time.tv_sec - g_last_time.tv_sec;
+	long diffNsec = current_time.tv_nsec - g_last_time.tv_nsec;
+
+	long diffMsec = diffSec * 1000 + diffNsec / (1000 * 1000);
+	float dt = diffMsec / 1000.f;
+
+
+	if(dt > 1/60.f)
+	{
+		g_last_time = current_time;
+		float t = 0.9f * dt;
+
+		g_center = t * g_centerTarget + (1.f - t) * g_center;
+		g_eyeDist = t * g_eyeDistTarget + (1.f - t) * g_eyeDist;
+		if(magnitude_squared(g_center - g_centerTarget) > EPSILON_SQ ||
+			(fabs(g_eyeDistTarget - g_eyeDist) > EPSILON))
+		{
+			glutPostRedisplay();
+		}
+
+	}
+
 	if(g_state == STATE_Init)
 	{
 		printf("Initializing points...\n");
@@ -116,12 +144,25 @@ void on_idle(void)
 				glutPostRedisplay();
 			}
 		}
+
+		int lastTet = s_triangulator->GetNumTetrahedrons() - 1;
+		if(lastTet >= 0)
+		{
+			const Triangulator::Tetrahedron& tet = s_triangulator->GetTetrahedron(lastTet);
+			Vec3 v0Pos = s_grid->GetPos(tet.v0);
+			Vec3 v1Pos = s_grid->GetPos(tet.v1);
+			Vec3 v2Pos = s_grid->GetPos(tet.v2);
+			Vec3 v3Pos = s_grid->GetPos(tet.v3);
+
+			g_centerTarget = (v0Pos + v1Pos + v2Pos + v3Pos) / 4.f;
+		}
 	}
 }
 
 void on_display(void)
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_DEPTH_TEST);
 
 	// camera
 
@@ -131,7 +172,7 @@ void on_display(void)
 	float eyeZ = g_eyeDist * cos_pitch * sin(g_yaw);
 
 	glLoadIdentity();
-	gluLookAt(eyeX, eyeY, eyeZ, g_center.x, g_center.y, g_center.z, 0, 1, 0);
+	gluLookAt(eyeX + g_center.x, eyeY + g_center.y, eyeZ + g_center.z, g_center.x, g_center.y, g_center.z, 0, 1, 0);
 
 	// point cloud
 
@@ -145,10 +186,26 @@ void on_display(void)
 	}
 	else if(g_state == STATE_Triangulating)
 	{
-		glColor3f(1,1,1);
+		for(int i = 0, c = s_grid->GetNumPoints(); i < c; ++i)
+		{
+			if(!s_grid->IsValidPoint(i))
+			{
+				Vec3 pos = s_grid->GetPos(i);
+				DebugDrawPoint(pos, 0.5f, 0.5f, 0.5f);
+			}
+		}
+		
 		glBegin(GL_POINTS);
-		for(int i = 0, c = g_numPoints; i < c; ++i)
-			glVertex3f(g_points[i].x, g_points[i].y, g_points[i].z);
+		glColor3f(1,1,1);
+		glPointSize(1.f);
+		for(int i = 0, c = s_grid->GetNumPoints(); i < c; ++i)
+		{
+			if(s_grid->IsValidPoint(i))
+			{
+				Vec3 pos = s_grid->GetPos(i);
+				glVertex3fv(&pos.x);
+			}
+		}
 		glEnd();
 
 		glColor3f(0.8f, 0.8f, 0.8f);
@@ -157,8 +214,9 @@ void on_display(void)
 			if(pass == 1)
 			{
 				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+				glLineWidth(3.f);
 				glEnable(GL_POLYGON_OFFSET_LINE);
-				glPolygonOffset(1.f, 1.f);
+				glPolygonOffset(1.f, -10.f);
 				glColor3f(0.2f, 0.2f, 0.2f);
 			}
 
@@ -196,8 +254,12 @@ void on_display(void)
 		glDisable(GL_POLYGON_OFFSET_LINE);
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		glPolygonOffset(0.f, 0.f);
+		glLineWidth(1.f);
 	}
+	//glEnable(GL_CULL_FACE);
+	glDisable(GL_DEPTH_TEST);
 	RenderDebugDraw();
+	glDisable(GL_CULL_FACE);
 
 	glutSwapBuffers();
 }
@@ -208,6 +270,26 @@ void on_keyboard(unsigned char key, int x, int y)
 	{
 		s_bStepTriangulator = true;
 	}
+}
+
+void on_special_keyboard(int key, int x, int y)
+{
+	if(key == GLUT_KEY_UP)
+	{
+		if(g_eyeDistTarget < 10.f)
+			g_eyeDistTarget -= 1.f;
+		else 
+			g_eyeDistTarget -= 10.f;
+	}
+	else if(key == GLUT_KEY_DOWN)
+	{	
+		if(g_eyeDistTarget < 10.f)
+			g_eyeDistTarget += 1.f;
+		else 
+			g_eyeDistTarget += 10.f;
+	}
+
+	g_eyeDistTarget = Max(1.f, g_eyeDistTarget);
 }
 
 static int g_lastx = -1, g_lasty = -1;
@@ -246,6 +328,7 @@ int main(int argc, char** argv)
 	glutReshapeFunc( on_reshape );
 	glutDisplayFunc( on_display );
 	glutKeyboardFunc( on_keyboard );
+	glutSpecialFunc( on_special_keyboard );
 	glutMotionFunc( on_motion );
 	glutPassiveMotionFunc( on_passive_motion );
 
@@ -256,7 +339,8 @@ int main(int argc, char** argv)
 	// 1. generate random points
 	// 2. generate delaunay tri one piece at a time (for vis) using dewall
 	// 3. when finished export to file optionally
-
+	
+	clock_gettime(CLOCK_MONOTONIC, &g_last_time);
 	glutMainLoop();
 }
 

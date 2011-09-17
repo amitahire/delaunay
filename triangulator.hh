@@ -4,14 +4,17 @@
 #include <list>
 #include <vector>
 
+class SparsePointGrid;
+
 class TriangleHashList
 {
 	struct HashValue
 	{
-		HashValue() : v0(-1), v1(-1), v2(-1), 
+		HashValue() : v0(-1), v1(-1), v2(-1), frontFacing(false),
 			next(0), nextInserted(0), prevInserted(0) {}
 
 		int v0,v1,v2;
+		bool frontFacing;
 		HashValue *next;
 
 		HashValue *nextInserted;
@@ -30,15 +33,16 @@ public:
 	TriangleHashList(int numBuckets);
 	~TriangleHashList();
 
-	void AddOrRemove(int v0, int v1, int v2);
+	bool AddOrRemove(int v0, int v1, int v2);
+	bool Remove(int v0, int v1, int v2);
 	bool GetNext(int *verts);
 	bool Empty() const { return m_lastInserted == 0; }
+
+	void DebugDrawFaces(const SparsePointGrid * grid);
 private:
 	bool RemoveFromBuckets(int v0, int v1, int v2);
 	bool RemoveFromBuckets(int idx, int v0, int v1, int v2);
 };
-
-class SparsePointGrid;
 
 class Triangulator
 {

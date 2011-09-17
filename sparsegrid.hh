@@ -1,12 +1,15 @@
 #ifndef INCLUDED_sparsegrid_HH
 #define INCLUDED_sparsegrid_HH
 
+#include <vector>
+
 class SparsePointGrid
 {
 	struct PointData {
 		PointData() {}
-		PointData(Vec3_arg pos) : m_pos(pos) {}
+		PointData(Vec3_arg pos) : m_pos(pos), m_faceCount(-1) {}
 		Vec3 m_pos;
+		int m_faceCount;	// -1: not used yet, 0: deleted, > 0: valid for searching
 	};
 
 	struct Cell {
@@ -39,6 +42,12 @@ public:
 		SPLITDIR_Z,
 	};
 
+	enum ConstraintFlags
+	{
+		CONSTRAINT_POINT_ABOVE = (1 << 0),
+		CONSTRAINT_DELAUNAY = (1 << 1),
+	};
+
 	SparsePointGrid(float gridDims, int cellsPerDim);
 	~SparsePointGrid();
 
@@ -46,8 +55,15 @@ public:
 	int ClosestPointToSplit(SplitDir dir, const AABB& boundsToSplit);
 	int NearestNeighborAcrossPlane(int from, const Plane& plane);
 	int PointWithMinCircumcircle(int v0, int v1);
-	int PointWithMinCircumsphere(int v0, int v1, int v2);
-	Vec3 GetPos(int pointIdx);
+	int PointWithMinCircumsphere(int v0, int v1, int v2, int flags = 0);
+	Vec3 GetPos(int pointIdx) const;
+	int GetNumPoints() const { return m_numPoints; }
+	bool IsValidPoint(int idx) const { return m_allPoints[idx].m_faceCount != 0; }
+	void FindPointsInRadius(Vec3_arg from, float radius, std::vector<int> &outPoints);
+	bool HasPointsInRadiusSq(Vec3_arg from, float radiusSq, const int *except, int numExcept);
+
+	void AddRef(int pointIdx);
+	void SubRef(int pointIdx);
 
 	const AABB& GetAllPointsAABB() const { return m_pointsAABB; }
 private:
@@ -57,8 +73,10 @@ private:
 	void ToGrid(float value, int& index);
 	void ToGridNoClamp(Vec3_arg v, int &ix, int &iy, int &iz);
 	void ToGridNoClamp(float value, int& index);
-	void FindClosestPointInCell(const Cell* cell, const Plane& plane, int& closestPointIndex, float &closestPointDist);
-	void FindClosestPointInCellAbovePlane(const Cell* cell, Vec3_arg fromPos, const Plane& plane, int& closestPointIndex, float &closestPointDistSq);
+	void FindClosestPointInCell(const Cell* cell, const Plane& plane, 
+		int& closestPointIndex, float &closestPointDist);
+	void FindClosestPointInCellAbovePlane(const Cell* cell, Vec3_arg fromPos, const Plane& plane,
+		float fromPlaneDist, int& closestPointIndex, float &closestPointDistSq);
 };
 
 #endif
