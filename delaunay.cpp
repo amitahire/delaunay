@@ -19,7 +19,7 @@ enum AppState
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-// Global state
+// Global state (file scope)
 
 static int g_state = STATE_Init;
 static int g_width, g_height;
@@ -33,6 +33,10 @@ static unsigned int g_seed = 12345U;
 static SparsePointGrid *s_grid;
 static Triangulator *s_triangulator;
 static bool s_bStepTriangulator = false;
+static timespec g_last_time;
+
+////////////////////////////////////////////////////////////////////////////////
+// GLUT callbacks
 
 void on_reshape(int width, int height)
 {
@@ -77,7 +81,6 @@ void generate_points()
 	}
 }
 
-timespec g_last_time;
 void on_idle(void)
 {
 	timespec current_time;
@@ -317,6 +320,8 @@ void on_motion(int x, int y)
 	glutPostRedisplay();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Main
 int main(int argc, char** argv)
 {
 	glutInit(&argc, argv);
@@ -334,12 +339,6 @@ int main(int argc, char** argv)
 
 	setup_gl();
 
-	// in loop
-
-	// 1. generate random points
-	// 2. generate delaunay tri one piece at a time (for vis) using dewall
-	// 3. when finished export to file optionally
-	
 	clock_gettime(CLOCK_MONOTONIC, &g_last_time);
 	glutMainLoop();
 }
