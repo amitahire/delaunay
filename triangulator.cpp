@@ -92,7 +92,7 @@ void Triangulator::StartWall(SplitNode* node)
 		return;
 	DebugDrawPoint(m_grid->GetPos(v2), 0.f, 1.f, 0.f);
 
-	int v3 = m_grid->PointWithMinCircumsphere(v0, v1, v2, SparsePointGrid::CONSTRAINT_DELAUNAY);
+	int v3 = m_grid->PointWithMinCircumsphere(node->m_bounds, v0, v1, v2, SparsePointGrid::CONSTRAINT_DELAUNAY);
 	if(v3 == -1)
 		return;
 	DebugDrawPoint(m_grid->GetPos(v3), 1.f, 0.f, 1.f);
@@ -207,7 +207,7 @@ void Triangulator::InitActiveFaces(SplitNode* node)
 		int *indices = &allFaceIndices[iIndex];	
 		if(allResults[iResult] == TRI_PLANE_INTERSECT_ALL_ABOVE)
 		{
-			node->m_activeFaces.Remove(indices[0], indices[1], indices[2]);
+			VERIFY(node->m_activeFaces.Remove(indices[0], indices[1], indices[2]));
 			if(node->m_children[0] == 0)
 			{
 				AABB bounds = node->m_bounds;
@@ -221,7 +221,7 @@ void Triangulator::InitActiveFaces(SplitNode* node)
 		}
 		else if(allResults[iResult] == TRI_PLANE_INTERSECT_ALL_BELOW)
 		{
-			node->m_activeFaces.Remove(indices[0], indices[1], indices[2]);
+			VERIFY(node->m_activeFaces.Remove(indices[0], indices[1], indices[2]));
 			if(node->m_children[1] == 0)
 			{
 				AABB bounds = node->m_bounds;
@@ -259,7 +259,7 @@ void Triangulator::ContinueWall(SplitNode* node)
 		DebugDrawPoint(m_grid->GetPos(verts[i]), 0.f, 0.f, 1.f);
 	}
 	
-	int v3 = m_grid->PointWithMinCircumsphere(verts[0], verts[1], verts[2],
+	int v3 = m_grid->PointWithMinCircumsphere(node->m_bounds, verts[0], verts[1], verts[2],
 		SparsePointGrid::CONSTRAINT_POINT_ABOVE | SparsePointGrid::CONSTRAINT_DELAUNAY);
 	if(v3 == -1)
 	{

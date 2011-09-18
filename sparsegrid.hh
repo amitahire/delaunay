@@ -55,7 +55,7 @@ public:
 	int ClosestPointToSplit(SplitDir dir, const AABB& boundsToSplit);
 	int NearestNeighborAcrossPlane(int from, const Plane& plane);
 	int PointWithMinCircumcircle(int v0, int v1);
-	int PointWithMinCircumsphere(int v0, int v1, int v2, int flags = 0);
+	int PointWithMinCircumsphere(const AABB& bounds, int v0, int v1, int v2, int flags = 0);
 	Vec3 GetPos(int pointIdx) const;
 	int GetNumPoints() const { return m_numPoints; }
 	bool IsValidPoint(int idx) const { return m_allPoints[idx].m_faceCount != 0; }
@@ -71,6 +71,7 @@ private:
 
 	void ToGrid(Vec3_arg v, int &ix, int &iy, int &iz);
 	void ToGrid(float value, int& index);
+	void ToGrid(const AABB& bounds, Vec3_arg v, int &ix, int &iy, int &iz);
 	void ToGridNoClamp(Vec3_arg v, int &ix, int &iy, int &iz);
 	void ToGridNoClamp(float value, int& index);
 	void FindClosestPointInCell(const Cell* cell, const Plane& plane, 

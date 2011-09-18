@@ -15,6 +15,14 @@ struct Plane
 	float m_d;
 };
 
+struct DPlane
+{
+	DPlane() {}
+	DPlane(DVec3_arg normal, double d) : m_normal(normal), m_d(d) {}
+	DVec3 m_normal;
+	double m_d;
+};
+
 enum TriPlaneIntersectType
 {
 	TRI_PLANE_INTERSECT_ALL_BELOW = 0x0,
@@ -28,10 +36,14 @@ float DistSqAABBToPoint(const AABB& aabb, Vec3_arg pt);
 bool AABBIntersectsSphere(const AABB& aabb, Vec3_arg sphereCenter, float sphereRadius);
 bool AABBIntersectsShell(const AABB& aabb, Vec3_arg sphereCenter, float minRadius, float maxRadius);
 bool AABBAbovePlane(const AABB& aabb, const Plane& plane);
+bool AABBAbovePlane(const AABB& aabb, const DPlane& plane);
+bool AABBContains(const AABB& aabb, Vec3_arg pt);
+bool AABBContains(const AABB& aabb, DVec3_arg pt);
 Vec3 MakeSplitNormal(int splitdir);
 void MakeSplitPlane(Plane& plane, int dir, const AABB& bounds);
 bool ComputeCircumcircle(Vec3_arg a, Vec3_arg b, Vec3_arg c, Vec3& outCenter, float &outRadiusSq);
 bool ComputeCircumsphere(Vec3_arg a, Vec3_arg b, Vec3_arg c, Vec3_arg d, Vec3 &outCenter, float &outRadiusSq);
+bool ComputeCircumsphere(DVec3_arg a, DVec3_arg b, DVec3_arg c, DVec3_arg d, DVec3 &outCenter, double &outRadiusSq);
 void PlaneIntersectsTriangleList(const Plane& plane, int numTriangles, const Vec3* triangleData, int *results);
 
 template<class T>

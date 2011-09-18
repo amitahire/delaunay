@@ -34,6 +34,7 @@ static unsigned int g_seed = 12345U;
 static SparsePointGrid *s_grid;
 static Triangulator *s_triangulator;
 static bool s_bStepTriangulator = false;
+static int s_stepTriangulatorCount = 1;
 static timespec g_last_time;
 static bool g_bAuto = false;
 static bool g_bDebugRender = true;
@@ -173,6 +174,12 @@ void on_idle(void)
 				if(s_bStepTriangulator || g_bAuto)
 				{
 					ClearDebugDraw();
+					DisableDebugDraw();
+					while(s_stepTriangulatorCount-- > 1)
+					{
+						s_triangulator->Step();
+					}
+					EnableDebugDraw();
 					s_triangulator->Step();
 					s_bStepTriangulator = false;
 					glutPostRedisplay();
@@ -383,6 +390,12 @@ void on_keyboard(unsigned char key, int x, int y)
 	if(key == ' ')
 	{
 		s_bStepTriangulator = true;
+		s_stepTriangulatorCount = 1;
+	}
+	else if(key == 'S')
+	{
+		s_bStepTriangulator = true;
+		s_stepTriangulatorCount = 100;
 	}
 }
 

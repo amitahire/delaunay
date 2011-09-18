@@ -60,6 +60,21 @@ void SparsePointGrid::ToGrid(Vec3_arg v, int &ix, int &iy, int &iz)
 	ToGrid(v.y, iy);
 	ToGrid(v.z, iz);
 }
+	
+void SparsePointGrid::ToGrid(const AABB& bounds, Vec3_arg v, int &ix, int &iy, int &iz)
+{
+	ToGridNoClamp(v.x, ix);
+	ToGridNoClamp(v.y, iy);
+	ToGridNoClamp(v.z, iz);
+
+	int iMin[3], iMax[3];
+	ToGrid(bounds.m_min, iMin[0], iMin[1], iMin[2]);
+	ToGrid(bounds.m_max, iMax[0], iMax[1], iMax[2]);
+
+	ix = Clamp(ix, iMin[0], iMax[0]);
+	iy = Clamp(iy, iMin[1], iMax[1]);
+	iz = Clamp(iz, iMin[2], iMax[2]);
+}
 
 void SparsePointGrid::ToGridNoClamp(float value, int& index)
 {
@@ -449,15 +464,15 @@ int SparsePointGrid::PointWithMinCircumcircle(int v0, int v1)
 	return bestRadiusIndex;	
 }
 
-int SparsePointGrid::PointWithMinCircumsphere(int v0, int v1, int v2, int flags)
+int SparsePointGrid::PointWithMinCircumsphere(const AABB& bounds, int v0, int v1, int v2, int flags)
 {
-	Vec3 v0Pos = GetPos(v0);
-	Vec3 v1Pos = GetPos(v1);
-	Vec3 v2Pos = GetPos(v2);
-	float inv_w = 1/3.f;
-	Vec3 center = inv_w * v0Pos + inv_w * v1Pos + inv_w * v2Pos;
+	DVec3 v0Pos = GetPos(v0);
+	DVec3 v1Pos = GetPos(v1);
+	DVec3 v2Pos = GetPos(v2);
+	double inv_w = 1/3.;
+	DVec3 center = inv_w * v0Pos + inv_w * v1Pos + inv_w * v2Pos;
 
-	Plane trianglePlane;
+	DPlane trianglePlane;
 	trianglePlane.m_normal = normalize(cross(v1Pos - v0Pos, v2Pos - v0Pos));
 	trianglePlane.m_d = dot(v0Pos, trianglePlane.m_normal);
 
@@ -468,8 +483,8 @@ int SparsePointGrid::PointWithMinCircumsphere(int v0, int v1, int v2, int flags)
 	}
 
 	int bestRadiusIndex = -1;
-	float bestRadiusSq = FLT_MAX;		
-	float searchDistMax = 2.f * magnitude(center - v0Pos);
+	double bestRadiusSq = DBL_MAX;		
+	double searchDistMax = 2. * magnitude(center - v0Pos);
 
 	int iSearchedStart[3], iSearchedEnd[3];
 	for(int i = 0; i < 3; ++i)
@@ -483,8 +498,8 @@ int SparsePointGrid::PointWithMinCircumsphere(int v0, int v1, int v2, int flags)
 		int iStart[3];
 		int iEnd[3];
 
-		ToGrid(center - Vec3(searchDistMax, searchDistMax, searchDistMax), iStart[0], iStart[1], iStart[2]);
-		ToGrid(center + Vec3(searchDistMax, searchDistMax, searchDistMax), iEnd[0], iEnd[1], iEnd[2]);
+		ToGrid(bounds, center - DVec3(searchDistMax, searchDistMax, searchDistMax), iStart[0], iStart[1], iStart[2]);
+		ToGrid(bounds, center + DVec3(searchDistMax, searchDistMax, searchDistMax), iEnd[0], iEnd[1], iEnd[2]);
 
 		int dim;
 		for(dim = 0; dim < 3; ++dim)
@@ -531,13 +546,15 @@ int SparsePointGrid::PointWithMinCircumsphere(int v0, int v1, int v2, int flags)
 							{
 								if(m_allPoints[points[i]].m_faceCount == 0)
 									continue;
-								float radiusSq = FLT_MAX;
-								Vec3 testCenter;
-								Vec3 pos = m_allPoints[points[i]].m_pos;
-								float distToPointSq = magnitude_squared(center - pos);
-								float pointDist = dot(trianglePlane.m_normal, pos) - trianglePlane.m_d;
+								DVec3 pos = m_allPoints[points[i]].m_pos;
+								if(!AABBContains(bounds, pos))
+									continue;
+								double radiusSq = DBL_MAX;
+								DVec3 testCenter;
+								double distToPointSq = magnitude_squared(center - pos);
+								double pointDist = dot(trianglePlane.m_normal, pos) - trianglePlane.m_d;
 								
-								if(	pointDist > EPSILON &&
+								if(	pointDist > 0.f &&
 									distToPointSq < bestRadiusSq &&
 									ComputeCircumsphere(v0Pos, v1Pos, v2Pos, pos, testCenter, radiusSq) &&
 									radiusSq < bestRadiusSq)
@@ -572,9 +589,15 @@ int SparsePointGrid::PointWithMinCircumsphere(int v0, int v1, int v2, int flags)
 	}
 
 	DebugDrawLine(inv_w * v0Pos + inv_w * v1Pos + inv_w * v2Pos, center, 1.f, 1.f, 0.f, 1.f);
-	DebugDrawVector(inv_w * v0Pos + inv_w * v1Pos + inv_w * v2Pos, 3.f * normalize(trianglePlane.m_normal), 
+	DebugDrawVector(inv_w * v0Pos + inv_w * v1Pos + inv_w * v2Pos, 3.0 * normalize(trianglePlane.m_normal), 
 		1.f, 0.f, 1.f, 1.f);
 	DebugDrawSphere(center, sqrtf(bestRadiusSq), 0.3f, 0.3f, 0.5f, 0.3f);
+
+	if(bestRadiusSq > 100 * magnitude_squared(bounds.m_max - bounds.m_min))
+	{
+		return -1;
+	}
+
 	return bestRadiusIndex;	
 }
 
@@ -614,6 +637,7 @@ void SparsePointGrid::FindPointsInRadius(Vec3_arg from, float radius, std::vecto
 							if(m_allPoints[points[i]].m_faceCount == 0)
 								continue;
 							Vec3 pos = m_allPoints[points[i]].m_pos;
+
 							if(magnitude_squared(pos - from) < radiusSq)
 								outPoints.push_back(points[i]);
 						}

@@ -12,6 +12,8 @@
 #define DEBUGBREAK() __debugbreak();
 #endif
 
+#define VERIFY(condition) do { if(!(condition)) { DEBUGBREAK() } } while(0)
+
 #ifdef DEBUG
 #define LABASSERT(condition,message) do { if(!(condition)) { fprintf(stderr, "%s\n", message); DEBUGBREAK(); } } while(0)
 #define ASSERT(condition) do { if(!(condition)) { DEBUGBREAK() } } while(0)

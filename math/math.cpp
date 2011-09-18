@@ -61,6 +61,16 @@ bool AABBAbovePlane(const AABB& aabb, const Plane& plane)
 	return planeDist >= -radius;
 }
 
+bool AABBAbovePlane(const AABB& aabb, const DPlane& plane)
+{
+	DVec3 diff = 0.5 * DVec3(aabb.m_max) - 0.5 * DVec3(aabb.m_min);
+	double radius = fabs(diff[0]) + fabs(diff[1]) + fabs(diff[2]);
+	DVec3 center = DVec3(aabb.m_min) + diff;
+	double planeDist = dot(plane.m_normal, center) - plane.m_d;
+	return planeDist >= -radius;
+}
+
+
 Vec3 MakeSplitNormal(int splitdir)
 {
 	return Vec3(
@@ -153,6 +163,52 @@ bool ComputeCircumsphere(Vec3_arg a, Vec3_arg b, Vec3_arg c, Vec3_arg d, Vec3 &o
 	return true;
 }
 
+bool ComputeCircumsphere(DVec3_arg a, DVec3_arg b, DVec3_arg c, DVec3_arg d, DVec3 &outCenter, double &outRadiusSq)
+{
+	DMat4 aMat(a.x, a.y, a.z, 1.f,
+		b.x, b.y, b.z, 1.f,
+		c.x, c.y, c.z, 1.f,
+		d.x, d.y, d.z, 1.f);
+	double aCoef = det(aMat);
+
+	if(abs(aCoef) < EPSILON)
+		return false;
+
+	DMat4 bMat = aMat;
+	bMat.m[0] = a.x * a.x + a.y * a.y + a.z * a.z;
+	bMat.m[4] = b.x * b.x + b.y * b.y + b.z * b.z;
+	bMat.m[8] = c.x * c.x + c.y * c.y + c.z * c.z;
+	bMat.m[12] = d.x * d.x + d.y * d.y + d.z * d.z;
+	double bxCoef = det(bMat);
+
+	bMat.m[1] = a.x;
+	bMat.m[5] = b.x;
+	bMat.m[9] = c.x;
+	bMat.m[13] = d.x;
+	double byCoef = -det(bMat);
+
+	bMat.m[2] = a.y;
+	bMat.m[6] = b.y;
+	bMat.m[10] = c.y;
+	bMat.m[14] = d.y;
+	double bzCoef = det(bMat);
+
+	bMat.m[3] = a.z;
+	bMat.m[7] = b.z;
+	bMat.m[11] = c.z;
+	bMat.m[15] = d.z;
+	double cCoef = det(bMat);
+
+	double inv_double_a = 1.0 / (2.0 * aCoef);
+	outCenter.x = bxCoef * inv_double_a;
+	outCenter.y = byCoef * inv_double_a;
+	outCenter.z = bzCoef * inv_double_a;
+
+	outRadiusSq = (bxCoef * bxCoef + byCoef * byCoef + bzCoef * bzCoef - 4.f * aCoef * cCoef) / (4.f * aCoef * aCoef);
+
+	return true;
+}
+
 void PlaneIntersectsTriangleList(const Plane& plane, int numTriangles, const Vec3* triangleData, int *results)
 {
 	int triangleOff = 0;
@@ -165,5 +221,19 @@ void PlaneIntersectsTriangleList(const Plane& plane, int numTriangles, const Vec
 		results[i] = v0r | v1r | v2r;
 		triangleOff += 3;
 	}
+}
+
+bool AABBContains(const AABB& aabb, Vec3_arg pt)
+{
+	return (pt.x >= aabb.m_min.x && pt.x <= aabb.m_max.x) &&
+		(pt.y >= aabb.m_min.y && pt.y <= aabb.m_max.y) &&
+		(pt.z >= aabb.m_min.z && pt.z <= aabb.m_max.z);
+}
+
+bool AABBContains(const AABB& aabb, DVec3_arg pt)
+{
+	return (pt.x >= double(aabb.m_min.x) && pt.x <= double(aabb.m_max.x)) &&
+		(pt.y >= double(aabb.m_min.y) && pt.y <= double(aabb.m_max.y)) &&
+		(pt.z >= double(aabb.m_min.z) && pt.z <= double(aabb.m_max.z));
 }
 
