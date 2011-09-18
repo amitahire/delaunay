@@ -69,7 +69,10 @@ void Triangulator::StartWall(SplitNode* node)
 	// Make the first tetrahedron
 	int v0 = m_grid->ClosestPointToSplit(SparsePointGrid::SplitDir(node->m_splitDir), node->m_bounds);
 	if(v0 == -1)
+	{
+		printf("StartWall: Failed to find first point.\n");
 		return;
+	}
 	DebugDrawPoint(m_grid->GetPos(v0), 1.f, 0.f, 0.f);
 
 	Plane splitPlane;
@@ -78,7 +81,10 @@ void Triangulator::StartWall(SplitNode* node)
 	DebugDrawPlane(node->m_bounds, splitPlane);
 	int v1 = m_grid->NearestNeighborAcrossPlane(v0, splitPlane);
 	if(v1 == -1)
+	{
+		printf("StartWall: Failed to find second point.\n");
 		return;
+	}
 	DebugDrawPoint(m_grid->GetPos(v1), 1.f, 0.f, 0.f);
 
 #ifdef DEBUG
@@ -89,12 +95,18 @@ void Triangulator::StartWall(SplitNode* node)
 
 	int v2 = m_grid->PointWithMinCircumcircle(v0, v1);
 	if(v2 == -1)
+	{
+		printf("StartWall: Failed to find third point.\n");
 		return;
+	}
 	DebugDrawPoint(m_grid->GetPos(v2), 0.f, 1.f, 0.f);
 
 	int v3 = m_grid->PointWithMinCircumsphere(node->m_bounds, v0, v1, v2, SparsePointGrid::CONSTRAINT_DELAUNAY);
 	if(v3 == -1)
+	{
+		printf("StartWall: Failed to find last point of first simplex.\n");
 		return;
+	}
 	DebugDrawPoint(m_grid->GetPos(v3), 1.f, 0.f, 1.f);
 	
 	AddSimplex(node, splitPlane, v0, v1, v2, v3 );

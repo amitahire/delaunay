@@ -181,68 +181,72 @@ int SparsePointGrid::ClosestPointToSplit(SplitDir dir, const AABB& boundsToSplit
 	int closestPointIndex = -1;
 	float closestPointDist = FLT_MAX;
 	float searchDistMax = m_cellDim;
-	float searchDistMin = 0.f;
+
 	Plane splitPlane;
 	MakeSplitPlane(splitPlane, dir, boundsToSplit);
 
-	int iStartLeft[3];
-	int iEndLeft[3];
-	int iStartRight[3];
-	int iEndRight[3];
-	int *startSides[2] = { iStartLeft, iStartRight };
-	int *endSides[2] = { iEndLeft, iEndRight };
+	int iSearchedStart[3];
+	int iSearchedEnd[3];
+
+	for(int i = 0; i < 3; ++i)
+	{
+		iSearchedStart[i] = INT_MAX;
+		iSearchedEnd[i] = INT_MIN;
+	}
+		
+	int iStart[3];
+	int iEnd[3];
+
 	ASSERT(dir >= 0 && dir < 3);
 	for(int i = 0; i < 3; ++i)
 	{
-		iStartLeft[i] = iStartRight[i] = 0;
-		iEndLeft[i] = iEndRight[i] = -1;
-
 		if(i != dir)
 		{
-			ToGrid(boundsToSplit.m_min[i], iStartLeft[i]);
-			ToGrid(boundsToSplit.m_max[i], iEndLeft[i]);
+			ToGrid(boundsToSplit.m_min[i], iStart[i]);
+			ToGrid(boundsToSplit.m_max[i], iEnd[i]);
 		}
 	}
 			
 	while(closestPointIndex == -1)
 	{
-		iStartLeft[dir] = iStartRight[dir] = 0;
-		iEndLeft[dir] = iEndRight[dir] = -1;
-
-		ToGrid(middle[dir] - searchDistMax, iStartLeft[dir]);
-		ToGrid(middle[dir] - searchDistMin, iEndLeft[dir]);
-		ToGrid(middle[dir] + searchDistMin, iStartRight[dir]);
-		ToGrid(middle[dir] + searchDistMax, iEndRight[dir]);
-
-		if((middle[dir] - searchDistMin < boundsToSplit.m_min[dir]) ||
-				(middle[dir] + searchDistMin > boundsToSplit.m_max[dir]))
-			break;
-
-		for(int zSide = 0; zSide < 2; ++zSide)
+		ToGrid(middle[dir] - searchDistMax, iStart[dir]);
+		ToGrid(middle[dir] + searchDistMax, iEnd[dir]);
+		
+		int dim;
+		for(dim = 0; dim < 3; ++dim)
 		{
-			for(int iz = startSides[zSide][2]; iz <= endSides[zSide][2]; ++iz)
+			if(iEnd[dim] > iSearchedEnd[dim] || iStart[dim] < iSearchedStart[dim])
+				break;
+		}
+		if(dim == 3)
+			break; // We're entirely in already searched cells, so we can quit.
+
+		for(int iz = iStart[2]; iz <= iEnd[2]; ++iz)
+		{
+			for(int iy = iStart[1]; iy <= iEnd[1]; ++iy)
 			{
-				for(int ySide = 0; ySide < 2; ++ySide)
+				for(int ix = iStart[0]; ix <= iEnd[0]; ++ix)
 				{
-					for(int iy = startSides[ySide][1]; iy <= endSides[ySide][1]; ++iy)
-					{
-						for(int xSide = 0; xSide < 2; ++xSide)
-						{
-							for(int ix = startSides[xSide][0]; ix <= startSides[xSide][0]; ++ix)
-							{
-								int cellIdx = ix + yDimMult * iy + zDimMult * iz;
-								Cell* cell = m_cells[cellIdx];
-								if(cell)
-									FindClosestPointInCell(cell, splitPlane, closestPointIndex, closestPointDist);
-							}
-						}
-					}
+					if(ix >= iSearchedStart[0] && ix <= iSearchedEnd[0] &&
+						iy >= iSearchedStart[1] && iy <= iSearchedEnd[1] &&
+						iz >= iSearchedStart[2] && iz <= iSearchedEnd[2])
+						continue;
+
+					int cellIdx = ix + yDimMult * iy + zDimMult * iz;
+					Cell* cell = m_cells[cellIdx];
+					if(cell)
+						FindClosestPointInCell(cell, splitPlane, closestPointIndex, closestPointDist);
 				}
 			}
 		}
 
-		searchDistMin = searchDistMax;
-		searchDistMax +=m_cellDim ;
+		for(int i = 0; i < 3; ++i)
+		{
+			iSearchedStart[i] = Min(iSearchedStart[i], iStart[i]);
+			iSearchedEnd[i] = Max(iSearchedEnd[i], iEnd[i]);
+		}
+
+		searchDistMax += 2.f * m_cellDim ;
 	}
 	return closestPointIndex;
 }
@@ -291,32 +295,37 @@ int SparsePointGrid::NearestNeighborAcrossPlane(int from, const Plane& plane)
 {
 	Vec3 fromPos = GetPos(from);
 
-	float searchDistMin = 0.f;
 	float searchDistMax = m_cellDim;
 
 	int closestPointIndex = -1;
 	float closestPointDistSq = FLT_MAX;
 
 	float fromPlaneDist = dot(plane.m_normal, fromPos) - plane.m_d;
+	
+	int iSearchedStart[3];
+	int iSearchedEnd[3];
 
-	// constraint plane should point away from the fromPos
-	Plane constraintPlane = plane;
-	if(fromPlaneDist > 0.f)
+	for(int i = 0; i < 3; ++i)
 	{
-		constraintPlane.m_normal = -constraintPlane.m_normal;
-		constraintPlane.m_d = -constraintPlane.m_d;
+		iSearchedStart[i] = INT_MAX;
+		iSearchedEnd[i] = INT_MIN;
 	}
 
 	while(closestPointIndex == -1)
 	{
-		if(fromPos[0] - searchDistMin < m_minGridDim || fromPos[0] + searchDistMin > m_maxGridDim) break;
-		if(fromPos[1] - searchDistMin < m_minGridDim || fromPos[1] + searchDistMin > m_maxGridDim) break;
-		if(fromPos[2] - searchDistMin < m_minGridDim || fromPos[2] + searchDistMin > m_maxGridDim) break;
-
 		int iStart[3];
 		int iEnd[3];
-		ToGrid(fromPos - Vec3(searchDistMin, searchDistMin, searchDistMin), iStart[0], iStart[1], iStart[2]);
-		ToGrid(fromPos + Vec3(searchDistMin, searchDistMin, searchDistMin), iEnd[0], iEnd[1], iEnd[2]);
+		ToGrid(fromPos - Vec3(searchDistMax, searchDistMax, searchDistMax), iStart[0], iStart[1], iStart[2]);
+		ToGrid(fromPos + Vec3(searchDistMax, searchDistMax, searchDistMax), iEnd[0], iEnd[1], iEnd[2]);
+		
+		int dim;
+		for(dim = 0; dim < 3; ++dim)
+		{
+			if(iEnd[dim] > iSearchedEnd[dim] || iStart[dim] < iSearchedStart[dim])
+				break;
+		}
+		if(dim == 3)
+			break; // We're entirely in already searched cells, so we can quit.
 
 		int zDimOff = iStart[2] * m_cellsPerDim * m_cellsPerDim;
 		for(int iz = iStart[2]; iz <= iEnd[2]; ++iz)
@@ -326,6 +335,11 @@ int SparsePointGrid::NearestNeighborAcrossPlane(int from, const Plane& plane)
 			{
 				for(int ix = iStart[0]; ix <= iEnd[0]; ++ix)
 				{
+					if(ix >= iSearchedStart[0] && ix <= iSearchedEnd[0] &&
+						iy >= iSearchedStart[1] && iy <= iSearchedEnd[1] &&
+						iz >= iSearchedStart[2] && iz <= iSearchedEnd[2])
+						continue;
+
 					int cellIdx = ix + yDimOff + zDimOff;
 					ASSERT(cellIdx >= 0 && cellIdx < (m_cellsPerDim * m_cellsPerDim * m_cellsPerDim));
 					Cell* cell = m_cells[cellIdx];
@@ -337,8 +351,9 @@ int SparsePointGrid::NearestNeighborAcrossPlane(int from, const Plane& plane)
 								iz * m_cellDim + m_minGridDim);
 						cellBounds.m_max = cellBounds.m_min + Vec3(m_cellDim, m_cellDim, m_cellDim);
 						
-						if(AABBIntersectsShell(cellBounds, fromPos, searchDistMin, searchDistMax) &&
-								AABBAbovePlane(cellBounds, constraintPlane))
+						float distToClosestSq = DistSqAABBToPoint(cellBounds, fromPos);
+						if(distToClosestSq < closestPointDistSq &&
+							AABBAbovePlane(cellBounds, plane))
 						{	
 							DebugDrawAABB(cellBounds);
 							FindClosestPointInCellAbovePlane(cell, fromPos, plane, fromPlaneDist,
@@ -352,7 +367,12 @@ int SparsePointGrid::NearestNeighborAcrossPlane(int from, const Plane& plane)
 			zDimOff += m_cellsPerDim * m_cellsPerDim;
 		}
 		
-		searchDistMin = searchDistMax;
+		for(int i = 0; i < 3; ++i)
+		{
+			iSearchedStart[i] = Min(iSearchedStart[i], iStart[i]);
+			iSearchedEnd[i] = Max(iSearchedEnd[i], iEnd[i]);
+		}
+		
 		searchDistMax +=m_cellDim ;
 	}
 

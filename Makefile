@@ -2,7 +2,7 @@ SRC = delaunay.cpp debugdraw.cpp math/math.cpp sparsegrid.cpp triangulator.cpp d
 OBJS = $(SRC:.cpp=.o)
 
 %.o : %.cpp
-	g++ -c -o $*.o -g -Wall -O3 -I. -DDEBUG -DLINUX $*.cpp
+	g++ -c -o $*.o -g -Wall -ggdb -O3 -I. -DDEBUG -DLINUX $*.cpp
 
 delaunay : $(OBJS)
 	g++ -o delaunay $(OBJS) -lm -lGL -lGLU -lglut

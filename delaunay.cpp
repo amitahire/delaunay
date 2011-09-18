@@ -45,6 +45,7 @@ static int g_gridDims = 64;
 static float g_cutawayParam = 0.f;
 static float g_cutawayParamTarget = 1.f;
 static int g_cutawayDir = 0;
+static bool g_bPaused = false;
 
 ////////////////////////////////////////////////////////////////////////////////
 // GLUT callbacks
@@ -159,7 +160,7 @@ void on_idle(void)
 			++g_state;
 			glutPostRedisplay();
 		}
-		else
+		else 
 		{
 			if(s_triangulator->IsDone())
 			{
@@ -169,7 +170,7 @@ void on_idle(void)
 				++g_state;
 				glutPostRedisplay();
 			}
-			else
+			else if(!g_bPaused)
 			{
 				if(s_bStepTriangulator || g_bAuto)
 				{
@@ -389,8 +390,14 @@ void on_keyboard(unsigned char key, int x, int y)
 {
 	if(key == ' ')
 	{
-		s_bStepTriangulator = true;
-		s_stepTriangulatorCount = 1;
+		if(g_bAuto)
+			g_bPaused = !g_bPaused;
+		else
+		{
+			s_bStepTriangulator = true;
+			s_stepTriangulatorCount = 1;
+		}
+
 	}
 	else if(key == 'S')
 	{
@@ -483,6 +490,10 @@ int main(int argc, char** argv)
 			g_gridDims = Max(4, atoi(argv[i]));
 			printf("Setting Uniform grid to %dx%dx%d\n", g_gridDims, g_gridDims, g_gridDims);
 		}
+		else if(strcasecmp(argv[i], "--pause") == 0)
+		{
+			g_bPaused = true;
+		}
 	}
 
 	if(g_bAuto)
@@ -495,6 +506,8 @@ int main(int argc, char** argv)
 		printf("Aanimating cutaway on completion.\n");
 	if(g_bOneStep)
 		printf("Skipping to the end of triangulatization.\n");
+	if(g_bPaused)
+		printf("Starting off paused.\n");
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 	glutCreateWindow("delaunay");
