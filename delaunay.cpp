@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
+#include <vector>
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <GL/glut.h>
@@ -14,7 +15,6 @@
 enum AppState
 {
 	STATE_Init,
-	STATE_BuildGrid,
 	STATE_Triangulating,
 	STATE_DisplayVolumeMesh,
 };
@@ -28,17 +28,16 @@ static float g_eyeDist = 310.f, g_pitch = M_PI / 4.f, g_yaw = M_PI / 4.f;
 static float g_eyeDistTarget = 310.f;
 static Vec3 g_center(0,0,0);
 static Vec3 g_centerTarget(0.f, 0.f, 0.f);
-static Vec3 *g_points;
 static int g_numPoints = 1000;
 static unsigned int g_seed = 12345U;
-static SparsePointGrid *s_grid;
 static Triangulator *s_triangulator;
+static SparsePointGrid *s_grid;
 static bool s_bStepTriangulator = false;
 static int s_stepTriangulatorCount = 1;
 static timespec g_last_time;
 static bool g_bAuto = false;
 static bool g_bDebugRender = true;
-static bool g_bEnableCutaway = true;
+static bool g_bEnableCutaway = false;
 static bool g_bEnableAnimCutaway = false;
 static bool g_bOneStep = false;
 static int g_gridDims = 64;
@@ -46,6 +45,7 @@ static float g_cutawayParam = 0.f;
 static float g_cutawayParamTarget = 1.f;
 static int g_cutawayDir = 0;
 static bool g_bPaused = false;
+static const char* g_szPointFile;
 
 ////////////////////////////////////////////////////////////////////////////////
 // GLUT callbacks
@@ -72,12 +72,10 @@ void setup_gl()
 	on_reshape(800, 800);
 }
 
-void generate_points()
+void generate_points(std::vector<Vec3>& points)
 {
-	if(g_points)
-		delete[] g_points;
-
-	g_points = new Vec3[g_numPoints];
+	points.clear();
+	points.resize(g_numPoints);
 
 	unsigned int seed = g_seed;
 	const float inv_randmax = 1.f/RAND_MAX;
@@ -87,9 +85,49 @@ void generate_points()
 		int iy = rand_r(&seed);
 		int iz = rand_r(&seed);
 
-		g_points[i].x = ((ix * inv_randmax) * 2.f - 1.f) * 100.f;
-		g_points[i].y = ((iy * inv_randmax) * 2.f - 1.f) * 100.f;
-		g_points[i].z = ((iz * inv_randmax) * 2.f - 1.f) * 100.f;
+		Vec3 &pt = points[i];
+		pt.x = ((ix * inv_randmax) * 2.f - 1.f) * 100.f;
+		pt.y = ((iy * inv_randmax) * 2.f - 1.f) * 100.f;
+		pt.z = ((iz * inv_randmax) * 2.f - 1.f) * 100.f;
+	}
+}
+
+void load_points(const char* szPointFile, std::vector<Vec3>& points)
+{
+	points.clear();
+	printf("Loading points from %s\n", szPointFile);
+
+	FILE *fp = fopen(szPointFile, "rb");
+	if(!fp)
+	{
+		printf("Failed to load point file %s\n", szPointFile);
+		return;
+	}
+
+	Vec3 pt;
+	int numRead = fscanf(fp, "%f %f %f", &pt.x, &pt.y, &pt.z);
+	while(numRead == 3)
+	{
+		points.push_back(pt);
+	}
+
+	printf("Read %d points.\n", int(points.size()));
+
+	fclose(fp);
+}
+
+void add_outer_points(std::vector<Vec3>& points, const AABB& aabb)
+{
+	Vec3 bounds[] = { aabb.m_min + Vec3(EPSILON, EPSILON, EPSILON), 
+		aabb.m_max - Vec3(EPSILON, EPSILON, EPSILON)};
+	for(int i = 0; i < 8; ++i)
+	{
+		int zSel = (i >> 2) & 1;
+		int ySel = (i >> 1) & 1;
+		int xSel = i & 1;
+
+		Vec3 pt(bounds[xSel][0], bounds[ySel][1], bounds[zSel][2]);
+		points.push_back(pt);
 	}
 }
 
@@ -122,20 +160,28 @@ void on_idle(void)
 	if(g_state == STATE_Init)
 	{
 		printf("Initializing points...\n");
-		generate_points();
-		++g_state;
-		glutPostRedisplay();
-	}
-	else if(g_state == STATE_BuildGrid)
-	{
+		std::vector<Vec3> points;
+
+		if(g_szPointFile)
+			load_points(g_szPointFile, points);
+		else
+			generate_points(points);
+
+		if(points.empty())
+		{
+			exit(1);
+		}
+		add_outer_points(points, AABB(Vec3(-128, -128, -128), Vec3(128, 128, 128)));
+
 		printf("building grid...\n");
-		s_grid = new SparsePointGrid(256.f, g_gridDims);
-		s_grid->InsertPoints(g_points, g_numPoints);
+		SparsePointGrid * grid = new SparsePointGrid(256.f, g_gridDims);
+		grid->InsertPoints(&points[0], points.size());
 		++g_state;
 		glutPostRedisplay();
 
 		printf("Triangulating...\n");
-		s_triangulator = new Triangulator(s_grid);
+		s_grid = grid;
+		s_triangulator = new Triangulator(grid);
 	}
 	else if(g_state == STATE_Triangulating)
 	{
@@ -143,10 +189,14 @@ void on_idle(void)
 		{
 			ClearDebugDraw();
 			DisableDebugDraw();
+		
+			timespec start_time;
+			timespec end_time;
 
 			int stepCount = 0;
 			printf("*\r");
 			char progress[] = { '/','-','\\', '|' };
+			clock_gettime(CLOCK_MONOTONIC, &start_time);
 			while(!s_triangulator->IsDone())
 			{
 				s_triangulator->Step();
@@ -154,9 +204,15 @@ void on_idle(void)
 				int idx = (stepCount / 100) % sizeof(progress);
 				printf("%c (%d)\r", progress[idx], stepCount);
 			}
+			clock_gettime(CLOCK_MONOTONIC, &end_time);
+
+			time_t diffSec = end_time.tv_sec - start_time.tv_sec;
+			long diffNSec = end_time.tv_nsec - start_time.tv_nsec;
+
+			long timeElapsedMs = diffSec * 1000 + diffNSec / (1000 * 1000);
 
 			EnableDebugDraw();
-			printf("\rDone (Single Step)!\n");
+			printf("\rDone (Single Step in %ds %dms)!\n", int(timeElapsedMs/1000), int(timeElapsedMs % 1000));
 			++g_state;
 			glutPostRedisplay();
 		}
@@ -224,8 +280,6 @@ void on_display(void)
 	glEnable(GL_DEPTH_TEST);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	// camera
-
 	float cos_pitch = cos(g_pitch);
 	float eyeX = g_eyeDist * cos_pitch * cos(g_yaw);
 	float eyeY = g_eyeDist * sin(g_pitch);
@@ -233,8 +287,6 @@ void on_display(void)
 
 	glLoadIdentity();
 	gluLookAt(eyeX + g_center.x, eyeY + g_center.y, eyeZ + g_center.z, g_center.x, g_center.y, g_center.z, 0, 1, 0);
-
-	// point cloud
 
 	if(g_state == STATE_Triangulating)
 	{
@@ -314,8 +366,8 @@ void on_display(void)
 		cutaway.m_normal = Vec3(g_cutawayDir == 0, g_cutawayDir == 1, g_cutawayDir == 2);
 		float cutaway_t = sin( g_cutawayParam * M_PI / 2.f ) ;
 		const AABB &allPointsAABB = s_grid->GetAllPointsAABB();
-		cutaway.m_d = dot((1.f - cutaway_t) * allPointsAABB.m_min +
-			cutaway_t * allPointsAABB.m_max, cutaway.m_normal);
+		cutaway.m_d = dot((1.f - cutaway_t) * 1.1f * allPointsAABB.m_min +
+			cutaway_t * 1.1f * allPointsAABB.m_max, cutaway.m_normal);
 
 		glEnable(GL_CULL_FACE);
 		glColor4f(0.8f, 0.8f, 0.8f, 1.f);
@@ -374,7 +426,7 @@ void on_display(void)
 		glPolygonOffset(0.f, 0.f);
 		glLineWidth(1.f);
 		
-		DrawPlane(allPointsAABB, cutaway);
+		if(g_bEnableCutaway) DrawPlane(allPointsAABB, cutaway);
 	}
 
 	if(g_bDebugRender)
@@ -493,6 +545,11 @@ int main(int argc, char** argv)
 		else if(strcasecmp(argv[i], "--pause") == 0)
 		{
 			g_bPaused = true;
+		}
+		else if(strcasecmp(argv[i], "--points") == 0 && i + 1 < argc)
+		{
+			++i;
+			g_szPointFile = argv[i];
 		}
 	}
 
