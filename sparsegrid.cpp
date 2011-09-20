@@ -613,7 +613,7 @@ int SparsePointGrid::PointWithMinCircumsphere(const AABB& bounds, int v0, int v1
 		1.f, 0.f, 1.f, 1.f);
 	DebugDrawSphere(center, sqrtf(bestRadiusSq), 0.3f, 0.3f, 0.5f, 0.3f);
 
-	if(bestRadiusSq > 100 * magnitude_squared(bounds.m_max - bounds.m_min))
+	if(bestRadiusSq > 4.f * magnitude_squared(0.5f * bounds.m_max - 0.5f * bounds.m_min))
 	{
 		return -1;
 	}
