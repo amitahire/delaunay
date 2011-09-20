@@ -46,6 +46,7 @@ static float g_cutawayParamTarget = 1.f;
 static int g_cutawayDir = 0;
 static bool g_bPaused = false;
 static const char* g_szPointFile;
+static const char* g_szMeshFile;
 
 ////////////////////////////////////////////////////////////////////////////////
 // GLUT callbacks
@@ -122,6 +123,32 @@ void load_points(const char* szPointFile, std::vector<Vec3>& points)
 	fclose(fp);
 
 	printf("Read %d points.\n", int(points.size()));
+}
+
+void write_volume_mesh(const SparsePointGrid *grid, const Triangulator* triangulator, const char *szMeshFile)
+{
+	FILE* fp = fopen(szMeshFile, "wb");
+	if(!fp)
+	{
+		printf("Failed to open %s for writing.\n", szMeshFile);
+		return;
+	}
+
+	Vec3 tetPos[4];
+	for(int i = 0, c = s_triangulator->GetNumTetrahedrons(); i < c; ++i)
+	{
+		const Triangulator::Tetrahedron& tet = s_triangulator->GetTetrahedron(i);
+		tetPos[0] = s_grid->GetPos(tet.v0);
+		tetPos[1] = s_grid->GetPos(tet.v1);
+		tetPos[2] = s_grid->GetPos(tet.v2);
+		tetPos[3] = s_grid->GetPos(tet.v3);
+
+		for(int j = 0; j < 4; ++j)
+			fprintf(fp, "%f %f %f ", tetPos[j].x, tetPos[j].y, tetPos[j].z);
+		fprintf(fp, "\n");
+	}
+	fclose(fp);
+	printf("Wrote %d tetrahedrons to %s.\n", s_triangulator->GetNumTetrahedrons(), szMeshFile);
 }
 
 void add_outer_points(std::vector<Vec3>& points, const AABB& aabb)
@@ -221,6 +248,8 @@ void on_idle(void)
 
 			EnableDebugDraw();
 			printf("\rDone (Single Step in %ds %dms)!\n", int(timeElapsedMs/1000), int(timeElapsedMs % 1000));
+
+			write_volume_mesh(s_grid, s_triangulator, g_szMeshFile);
 			++g_state;
 			glutPostRedisplay();
 		}
@@ -230,7 +259,7 @@ void on_idle(void)
 			{
 				ClearDebugDraw();
 				printf("Done!\n");
-				// extract triangulation? for now just let the s_triangulator stay in mem
+				write_volume_mesh(s_grid, s_triangulator, g_szMeshFile);
 				++g_state;
 				glutPostRedisplay();
 			}
@@ -561,6 +590,11 @@ void CmdPoints(int argc, char** argv)
 	g_szPointFile = argv[1];
 }
 
+void CmdOutput(int argc, char** argv)
+{
+	g_szMeshFile = argv[1];
+}
+
 void CmdHelp(int, char**);
 static CmdOption g_options[] = 
 {
@@ -573,6 +607,7 @@ static CmdOption g_options[] =
 	{ &CmdCellCount, "--cellcount", NULL, 1, "Set number of grid subdivisions to use." },
 	{ &CmdPause, "--pause", NULL, 0, "Start paused." },
 	{ &CmdPoints, "--points", NULL, 1, "File to read points from." },
+	{ &CmdOutput, "--output", "-o", 1, "File where we will write the volume mesh." },
 	{ &CmdHelp, "--help", "-h", 0, "Display help." },
 };
 
