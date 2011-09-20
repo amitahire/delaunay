@@ -51,7 +51,7 @@ static const char* g_szMeshFile;
 ////////////////////////////////////////////////////////////////////////////////
 // GLUT callbacks
 
-void on_reshape(int width, int height)
+void OnReshape(int width, int height)
 {
 	g_width = width;
 	g_height = height;
@@ -63,17 +63,17 @@ void on_reshape(int width, int height)
 	glLoadIdentity();
 }
 
-void setup_gl()
+void SetupGL()
 {
 	glClearColor(0.1f, 0.1f, 0.1f, 1.f);
 	glEnable(GL_LINE_SMOOTH);
 	glEnable(GL_BLEND);
 	glShadeModel(GL_FLAT);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	on_reshape(800, 800);
+	OnReshape(800, 800);
 }
 
-void generate_points(std::vector<Vec3>& points)
+void GeneratePoints(std::vector<Vec3>& points)
 {
 	points.clear();
 	points.resize(g_numPoints);
@@ -93,7 +93,7 @@ void generate_points(std::vector<Vec3>& points)
 	}
 }
 
-void load_points(const char* szPointFile, std::vector<Vec3>& points)
+void LoadPoints(const char* szPointFile, std::vector<Vec3>& points)
 {
 	points.clear();
 	printf("Loading points from %s\n", szPointFile);
@@ -125,7 +125,7 @@ void load_points(const char* szPointFile, std::vector<Vec3>& points)
 	printf("Read %d points.\n", int(points.size()));
 }
 
-void write_volume_mesh(const SparsePointGrid *grid, const Triangulator* triangulator, const char *szMeshFile)
+void WriteVolumeMesh(const SparsePointGrid *grid, const Triangulator* triangulator, const char *szMeshFile)
 {
 	FILE* fp = fopen(szMeshFile, "wb");
 	if(!fp)
@@ -151,7 +151,7 @@ void write_volume_mesh(const SparsePointGrid *grid, const Triangulator* triangul
 	printf("Wrote %d tetrahedrons to %s.\n", s_triangulator->GetNumTetrahedrons(), szMeshFile);
 }
 
-void add_outer_points(std::vector<Vec3>& points, const AABB& aabb)
+void AddOuterPoints(std::vector<Vec3>& points, const AABB& aabb)
 {
 	Vec3 bounds[] = { aabb.m_min + Vec3(EPSILON, EPSILON, EPSILON), 
 		aabb.m_max - Vec3(EPSILON, EPSILON, EPSILON)};
@@ -166,7 +166,7 @@ void add_outer_points(std::vector<Vec3>& points, const AABB& aabb)
 	}
 }
 
-void on_idle(void)
+void OnIdle(void)
 {
 	timespec current_time;
 	clock_gettime(CLOCK_MONOTONIC, &current_time);
@@ -198,15 +198,15 @@ void on_idle(void)
 		std::vector<Vec3> points;
 
 		if(g_szPointFile)
-			load_points(g_szPointFile, points);
+			LoadPoints(g_szPointFile, points);
 		else
-			generate_points(points);
+			GeneratePoints(points);
 
 		if(points.empty())
 		{
 			exit(1);
 		}
-		add_outer_points(points, AABB(Vec3(-128, -128, -128), Vec3(128, 128, 128)));
+		AddOuterPoints(points, AABB(Vec3(-128, -128, -128), Vec3(128, 128, 128)));
 
 		printf("building grid...\n");
 		SparsePointGrid * grid = new SparsePointGrid(256.f, g_gridDims);
@@ -249,7 +249,7 @@ void on_idle(void)
 			EnableDebugDraw();
 			printf("\rDone (Single Step in %ds %dms)!\n", int(timeElapsedMs/1000), int(timeElapsedMs % 1000));
 
-			write_volume_mesh(s_grid, s_triangulator, g_szMeshFile);
+			WriteVolumeMesh(s_grid, s_triangulator, g_szMeshFile);
 			++g_state;
 			glutPostRedisplay();
 		}
@@ -259,7 +259,7 @@ void on_idle(void)
 			{
 				ClearDebugDraw();
 				printf("Done!\n");
-				write_volume_mesh(s_grid, s_triangulator, g_szMeshFile);
+				WriteVolumeMesh(s_grid, s_triangulator, g_szMeshFile);
 				++g_state;
 				glutPostRedisplay();
 			}
@@ -312,7 +312,7 @@ void on_idle(void)
 	}
 }
 
-void on_display(void)
+void OnDisplay(void)
 {
 	glEnable(GL_DEPTH_TEST);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -475,7 +475,7 @@ void on_display(void)
 	glutSwapBuffers();
 }
 
-void on_keyboard(unsigned char key, int x, int y)
+void OnKeyboard(unsigned char key, int x, int y)
 {
 	if(key == ' ')
 	{
@@ -495,7 +495,7 @@ void on_keyboard(unsigned char key, int x, int y)
 	}
 }
 
-void on_special_keyboard(int key, int x, int y)
+void OnSpecialKeyboard(int key, int x, int y)
 {
 	if(key == GLUT_KEY_UP)
 	{
@@ -523,7 +523,7 @@ void on_passive_motion(int x, int y)
 	g_lasty = y;
 }
 
-void on_motion(int x, int y)
+void OnMotion(int x, int y)
 {
 	if(g_lastx < 0) g_lastx = x;
 	if(g_lasty < 0) g_lasty = y;
@@ -656,15 +656,15 @@ int main(int argc, char** argv)
 	g_width = 800; g_height = 800;
 	glutInitWindowSize( g_width, g_height );
 
-	glutIdleFunc( on_idle );
-	glutReshapeFunc( on_reshape );
-	glutDisplayFunc( on_display );
-	glutKeyboardFunc( on_keyboard );
-	glutSpecialFunc( on_special_keyboard );
-	glutMotionFunc( on_motion );
+	glutIdleFunc( OnIdle );
+	glutReshapeFunc( OnReshape );
+	glutDisplayFunc( OnDisplay );
+	glutKeyboardFunc( OnKeyboard );
+	glutSpecialFunc( OnSpecialKeyboard );
+	glutMotionFunc( OnMotion );
 	glutPassiveMotionFunc( on_passive_motion );
 
-	setup_gl();
+	SetupGL();
 
 	clock_gettime(CLOCK_MONOTONIC, &g_last_time);
 	glutMainLoop();
