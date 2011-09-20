@@ -12,6 +12,8 @@
 #include "triangulator.hh"
 #include "cmdhelper.hh"
 
+////////////////////////////////////////////////////////////////////////////////
+// Misc
 enum AppState
 {
 	STATE_Init,
@@ -22,31 +24,33 @@ enum AppState
 ////////////////////////////////////////////////////////////////////////////////
 // Global state (file scope)
 
-static int g_state = STATE_Init;
-static int g_width, g_height;
-static float g_eyeDist = 310.f, g_pitch = M_PI / 4.f, g_yaw = M_PI / 4.f;
-static float g_eyeDistTarget = 310.f;
+static int g_state = STATE_Init;				// Current application state
+static int g_width, g_height;					// Window width and height
+static float g_eyeDist = 310.f, 				// Camera parameters.
+	g_pitch = M_PI / 4.f, 
+	g_yaw = M_PI / 4.f;
+static float g_eyeDistTarget = 310.f;			
 static Vec3 g_center(0,0,0);
-static Vec3 g_centerTarget(0.f, 0.f, 0.f);
-static int g_numPoints = 1000;
-static unsigned int g_seed = 12345U;
-static Triangulator *s_triangulator;
-static SparsePointGrid *s_grid;
-static bool s_bStepTriangulator = false;
-static int s_stepTriangulatorCount = 1;
-static timespec g_last_time;
-static bool g_bAuto = false;
-static bool g_bDebugRender = true;
-static bool g_bEnableCutaway = false;
-static bool g_bEnableAnimCutaway = false;
-static bool g_bOneStep = false;
-static int g_gridDims = 64;
-static float g_cutawayParam = 0.f;
+static Vec3 g_centerTarget(0.f, 0.f, 0.f);		// camera center to lerp to
+static int g_numPoints = 1000;					// default number of points
+static unsigned int g_seed = 12345U;			// default random number seed
+static Triangulator *s_triangulator;			// global triangulator
+static SparsePointGrid *s_grid;					// global point grid
+static bool s_bStepTriangulator = false;		// true if we need to step the triangulator
+static int s_stepTriangulatorCount = 1;			// number of times to step the triangulator
+static timespec g_last_time;					// last time, used for calculating dt
+static bool g_bAuto = false;					// true if we auto-step to the end
+static bool g_bDebugRender = true;				// true if we're drawing debug rendering primitives
+static bool g_bEnableCutaway = false;			// true if drawing using a cutaway
+static bool g_bEnableAnimCutaway = false;		// true if animating the cutaway
+static bool g_bOneStep = false;					// true if we're skipping to the end (no drawing steps)
+static int g_gridDims = 20;						// Default number of cells per dimension in the point grid
+static float g_cutawayParam = 0.f;				// cutaway animation parameters
 static float g_cutawayParamTarget = 1.f;
 static int g_cutawayDir = 0;
-static bool g_bPaused = false;
-static const char* g_szPointFile;
-static const char* g_szMeshFile;
+static bool g_bPaused = false;					// True if we're currently paused.
+static const char* g_szPointFile;				// file to read points from
+static const char* g_szMeshFile;				// file to write resulting tetrahedrons to
 
 ////////////////////////////////////////////////////////////////////////////////
 // GLUT callbacks
