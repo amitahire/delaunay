@@ -1,6 +1,5 @@
-#include <cstdio>
+#include "common.hh"
 #include <cmath>
-#include <cstdlib>
 #include <ctime>
 #include <vector>
 #include <GL/gl.h>
@@ -11,6 +10,7 @@
 #include "math/math.hh"
 #include "sparsegrid.hh"
 #include "triangulator.hh"
+#include "cmdhelper.hh"
 
 enum AppState
 {
@@ -105,15 +105,23 @@ void load_points(const char* szPointFile, std::vector<Vec3>& points)
 	}
 
 	Vec3 pt;
-	int numRead = fscanf(fp, "%f %f %f", &pt.x, &pt.y, &pt.z);
-	while(numRead == 3)
+	char line[256];
+	char *read;
+	do
 	{
-		points.push_back(pt);
-	}
+		read = fgets(line, ARRAY_SIZE(line), fp);
+		if(read)
+		{	
+			int numRead = sscanf(read, "%f %f %f\n", &pt.x, &pt.y, &pt.z);
+			if(numRead == 3)
+			{
+				points.push_back(pt);
+			}
+		}
+	} while(read);
+	fclose(fp);
 
 	printf("Read %d points.\n", int(points.size()));
-
-	fclose(fp);
 }
 
 void add_outer_points(std::vector<Vec3>& points, const AABB& aabb)
@@ -504,54 +512,95 @@ void on_motion(int x, int y)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Command processing
+void CmdAuto(int, char**)
+{
+	g_bAuto = true;
+}
+
+void CmdNoDebug(int, char**)
+{
+	g_bDebugRender = false;
+}
+
+void CmdCutaway(int, char**)
+{
+	g_bEnableCutaway = true;
+}
+
+void CmdAnimCutaway(int, char**)
+{
+	g_bEnableAnimCutaway = true;
+	g_bEnableCutaway = true;
+}
+
+void CmdSkip(int, char**)
+{
+	g_bOneStep = true;
+}
+
+void CmdNumPoints(int argc, char** argv)
+{
+	g_numPoints = Max(atoi(argv[1]), 3);
+	printf("Setting num points to %d\n", g_numPoints);
+}
+
+void CmdCellCount(int argc, char **argv)
+{
+	g_gridDims = Max(4, atoi(argv[1]));
+	printf("Setting Uniform grid to %dx%dx%d\n", g_gridDims, g_gridDims, g_gridDims);
+}
+
+void CmdPause(int, char **)
+{
+	g_bPaused = true;
+}
+
+void CmdPoints(int argc, char** argv)
+{
+	g_szPointFile = argv[1];
+}
+
+void CmdHelp(int, char**);
+static CmdOption g_options[] = 
+{
+	{ &CmdAuto, "--auto", NULL, 0, "Automatically step." }, 
+	{ &CmdNoDebug, "--nodebug", NULL, 0, "Hide debug rendering primitives." },
+	{ &CmdCutaway, "--cutaway", NULL, 0, "Use a cutaway plane when rendering final results." },
+	{ &CmdAnimCutaway, "--animcutaway", NULL, 0, "Use an animated cutaway plane when rendering final results." },
+	{ &CmdSkip, "--skip", NULL, 0, "Skip visualization and jump to the end." },
+	{ &CmdNumPoints, "--numpoints", NULL, 1, "Set the number of points to generate." },
+	{ &CmdCellCount, "--cellcount", NULL, 1, "Set number of grid subdivisions to use." },
+	{ &CmdPause, "--pause", NULL, 0, "Start paused." },
+	{ &CmdPoints, "--points", NULL, 1, "File to read points from." },
+	{ &CmdHelp, "--help", "-h", 0, "Display help." },
+};
+
+bool g_bHelped = false;
+void CmdHelp(int argc, char **argv)
+{	
+	printf("Usage: delaunay [options]\n"
+	"options may be:\n\n");
+	for(int i = 0, c = ARRAY_SIZE(g_options); i < c; ++i)
+	{
+		CmdOption &opt = g_options[i];
+		printf("%s%s%-10s\t%s\n",
+			opt.szOptionLong,
+			(opt.szOptionShort ? ", " : ""),
+			(opt.szOptionShort ? opt.szOptionShort : ""),
+			opt.szDesc);
+	}
+	g_bHelped = true;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 // Main
 int main(int argc, char** argv)
 {
-	for(int i = 1; i < argc; ++i)
-	{
-		if(strcasecmp(argv[i], "--auto") == 0)
-		{
-			g_bAuto = true;
-		}
-		else if(strcasecmp(argv[i], "--nodebug") == 0)
-		{	
-			g_bDebugRender = false;
-		}
-		else if(strcasecmp(argv[i], "--cutaway") == 0)
-		{
-			g_bEnableCutaway = true;
-		}
-		else if(strcasecmp(argv[i], "--animcutaway") == 0)
-		{
-			g_bEnableAnimCutaway = true;
-			g_bEnableCutaway = true;
-		}
-		else if(strcasecmp(argv[i], "--skip") == 0)
-		{
-			g_bOneStep = true;
-		}
-		else if(strcasecmp(argv[i], "--numpoints") == 0 && i + 1 < argc)
-		{
-			++i;
-			g_numPoints = Max(atoi(argv[i]), 3);
-			printf("Setting num points to %d\n", g_numPoints);
-		}
-		else if(strcasecmp(argv[i], "--cellcount") == 0 && i + 1 < argc)
-		{
-			++i;
-			g_gridDims = Max(4, atoi(argv[i]));
-			printf("Setting Uniform grid to %dx%dx%d\n", g_gridDims, g_gridDims, g_gridDims);
-		}
-		else if(strcasecmp(argv[i], "--pause") == 0)
-		{
-			g_bPaused = true;
-		}
-		else if(strcasecmp(argv[i], "--points") == 0 && i + 1 < argc)
-		{
-			++i;
-			g_szPointFile = argv[i];
-		}
-	}
+	ProcessArguments(g_options, ARRAY_SIZE(g_options), argc, argv);
+	if(g_bHelped)
+		return 0;
 
 	if(g_bAuto)
 		printf("Auto stepping...\n");
@@ -565,6 +614,7 @@ int main(int argc, char** argv)
 		printf("Skipping to the end of triangulatization.\n");
 	if(g_bPaused)
 		printf("Starting off paused.\n");
+	printf("\n");
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 	glutCreateWindow("delaunay");
