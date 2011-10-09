@@ -1,6 +1,7 @@
 *.swp
 delaunay
 makepoints
+tetclip
 *.o
 .depend
 

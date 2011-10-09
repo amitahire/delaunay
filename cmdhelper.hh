@@ -1,5 +1,4 @@
-#ifndef INCLUDED_cmdhelper_HH
-#define INCLUDED_cmdhelper_HH
+#pragma once
 
 struct CmdOption
 {
@@ -12,5 +11,4 @@ struct CmdOption
 
 void ProcessArguments(CmdOption *opts, int numOpts, int argc, char **argv);
 
-#endif
 

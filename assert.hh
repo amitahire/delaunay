@@ -1,5 +1,4 @@
-#ifndef INCLUDED_ASSERT_H
-#define INCLUDED_ASSERT_H
+#pragma once
 
 #ifdef DEBUG
 #include <cstdio>
@@ -35,5 +34,4 @@ namespace Assert
 	JOIN(__compile_assert_typedef_, id)
 #define COMPILE_ASSERT( condition ) impl_COMPILE_ASSERT(condition, JOIN(__COUNTER__, __LINE__))
 
-#endif
 

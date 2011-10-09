@@ -1,8 +1,7 @@
-#ifndef INCLUDED_VECTOR_HH
-#define INCLUDED_VECTOR_HH
+#pragma once
 
+#include "assert.hh"
 #include <cmath>
-#include <assert.hh>
 
 class Vec3;
 typedef const Vec3& Vec3_arg;
@@ -384,4 +383,3 @@ inline Vec3::Vec3(const DVec3_arg other)
 {
 }
 
-#endif

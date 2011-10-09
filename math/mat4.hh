@@ -1,8 +1,7 @@
-#ifndef INCLUDED_MAT4_HH
-#define INCLUDED_MAT4_HH
+#pragma once
 
+#include "assert.hh"
 #include <cstring>
-#include <assert.hh>
 
 ////////////////////////////////////////////////////////////////////////////////
 /* Matrix math conventions
@@ -567,4 +566,3 @@ inline DMat4 inverse_rot_trans(DMat4_arg m)
 	return result;
 }
 
-#endif

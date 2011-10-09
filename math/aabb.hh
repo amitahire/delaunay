@@ -1,5 +1,5 @@
-#ifndef INCLUDED_AABB_HH
-#define INCLUDED_AABB_HH
+#pragma once
+
 #include "math/vec3.hh"
 #include <cfloat>
 
@@ -17,7 +17,4 @@ struct AABB
 		m_max = VecMax(v, m_max);
 	}
 };
-
-
-#endif
 

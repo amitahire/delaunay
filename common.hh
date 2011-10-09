@@ -1,5 +1,4 @@
-#ifndef INCLUDED_common_HH
-#define INCLUDED_common_HH
+#pragma once
 
 #include <cstdio>
 #include <cstdlib>
@@ -12,7 +11,5 @@ char (&array_size_helper(T (&)[N]))[N];
 template< class T > struct IsFloatType { enum { val = 0 }; };
 template<> struct IsFloatType<float> { enum { val = 1 }; };
 template<> struct IsFloatType<double> { enum { val = 1 }; };
-
-#endif
 
 

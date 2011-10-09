@@ -1,5 +1,4 @@
-#ifndef INCLUDED_triangulator_HH
-#define INCLUDED_triangulator_HH
+#pragma once
 
 #include <list>
 #include <vector>
@@ -92,7 +91,4 @@ private:
 	void AddSimplex(SplitNode* node, const Plane& plane, int v0, int v1, int v2, int v3);
 	void InitActiveFaces(SplitNode* node);
 };
-
-
-#endif
 

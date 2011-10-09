@@ -1,5 +1,4 @@
-#ifndef INCLUDED_sparsegrid_HH
-#define INCLUDED_sparsegrid_HH
+#pragma once
 
 #include <vector>
 
@@ -79,6 +78,4 @@ private:
 	void FindClosestPointInCellAbovePlane(const Cell* cell, Vec3_arg fromPos, const Plane& plane,
 		float fromPlaneDist, int& closestPointIndex, float &closestPointDistSq);
 };
-
-#endif
 

@@ -1,5 +1,4 @@
-#ifndef INCLUDED_debugdraw_HH
-#define INCLUDED_debugdraw_HH
+#pragma once
 
 #include "math/math.hh"
 
@@ -16,6 +15,4 @@ void RenderDebugDraw();
 void ClearDebugDraw();
 void EnableDebugDraw();
 void DisableDebugDraw();
-
-#endif
 

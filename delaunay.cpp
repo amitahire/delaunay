@@ -521,7 +521,7 @@ void OnSpecialKeyboard(int key, int x, int y)
 
 static int g_lastx = -1, g_lasty = -1;
 
-void on_passive_motion(int x, int y)
+void OnPassiveMotion(int x, int y)
 {
 	g_lastx = x;
 	g_lasty = y;
@@ -666,11 +666,13 @@ int main(int argc, char** argv)
 	glutKeyboardFunc( OnKeyboard );
 	glutSpecialFunc( OnSpecialKeyboard );
 	glutMotionFunc( OnMotion );
-	glutPassiveMotionFunc( on_passive_motion );
+	glutPassiveMotionFunc( OnPassiveMotion );
 
 	SetupGL();
 
 	clock_gettime(CLOCK_MONOTONIC, &g_last_time);
 	glutMainLoop();
+
+	return 0;
 }
 

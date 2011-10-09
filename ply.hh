@@ -1,5 +1,9 @@
 #pragma once
 
+#include <string>
+#include <vector>
+#include <limits>
+
 enum PlyDataType
 {
 	PLYDATATYPE_CHAR = 0,
@@ -43,7 +47,9 @@ class PlyData
 		}
 		template< class T >
 		T As() const {
-			return *reinterpret_cast<const T*>(m_data);
+			const char * srcPtr = m_data;
+			const T* destPtr = reinterpret_cast<const T*>(srcPtr);
+			return *destPtr;
 		}	
 	};
 		
