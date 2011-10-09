@@ -158,7 +158,7 @@ HETriMesh* ReadMesh(const char* filename)
 	HETriMesh * result = 0;
 	if(ply.Read(fp))
 	{
-		result = new HETriMesh(HETriMesh::OPT_TRYMATCH);
+		result = new HETriMesh(HETriMesh::OPT_TRYMATCH | HETriMesh::OPT_INITPAYLOAD);
 		PlyData::ElementReader vertexReader = ply.GetElement("vertex");
 		if(vertexReader.Valid())
 		{
@@ -201,10 +201,15 @@ HETriMesh* ReadMesh(const char* filename)
 							v0 = result->AddVertex( result->GetVertexPos(v0) );
 							v1 = result->AddVertex( result->GetVertexPos(v1) );
 							v2 = result->AddVertex( result->GetVertexPos(v2) );
-							if(result->AddFace(v0, v1, v2) < 0)
+
+							int floatingIdx = result->AddFace(v0, v1, v2, sizeof(bool));
+							if(floatingIdx < 0)
 							{
 								printf("Failed to create floating triangle.\n");
 							}
+							char * data = result->GetFaceData(floatingIdx);
+							bool * boolData = reinterpret_cast<bool*>(data);
+							*boolData = true;
 
 							++totalFloatingTris;
 						}
@@ -335,11 +340,17 @@ void OnDisplay(void)
 	gluLookAt(eyeX + g_center.x, eyeY + g_center.y, eyeZ + g_center.z, g_center.x, g_center.y, g_center.z, 0, 1, 0);
 		
 	glEnable(GL_CULL_FACE);
-	glColor4f(0.8f, 0.8f, 0.8f, 1.f);
 
 	glBegin(GL_TRIANGLES);
 	for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
 	{
+		const char * data = g_triMesh->GetFaceData(i);
+		const bool * boolData = reinterpret_cast<const bool*>(data);
+		if(boolData == 0 || *boolData == false)
+			glColor4f(0.8f, 0.8f, 0.8f, 1.f);
+		else
+			glColor4f(0.8f, 0.4f, 0.4f, 1.f);
+
 		int verts[3];
 		g_triMesh->GetFace(i, verts);
 		const Vec3& pt0 = g_triMesh->GetVertexPos(verts[0]);
@@ -356,6 +367,12 @@ void OnDisplay(void)
 	{
 		for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
 		{
+			const char * data = g_triMesh->GetFaceData(i);
+			const bool * boolData = reinterpret_cast<const bool*>(data);
+			if(boolData == 0 || *boolData == false)
+				glColor4f(0.8f, 0.8f, 0.8f, 1.f);
+			else
+				glColor4f(0.8f, 0.4f, 0.4f, 0.8f);
 			int verts[3];
 			g_triMesh->GetFace(i, verts);
 			const Vec3& pt0 = g_triMesh->GetVertexPos(verts[0]);

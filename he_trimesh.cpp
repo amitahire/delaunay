@@ -17,25 +17,32 @@ HETriMesh::~HETriMesh()
 		delete m_edges[i];
 }
 
-int HETriMesh::AddVertex(const Vec3& pos)
+int HETriMesh::AddVertex(const Vec3& pos, int payloadSize)
 {
 	// assume pos is unique
 	int idx = m_vertices.size();
-	m_vertices.push_back(new Vertex(pos));
+	char * payload = 0;
+	if(payloadSize > 0)
+	{
+		payload = new char[payloadSize];
+		if(m_flags & OPT_INITPAYLOAD)
+			memset(payload, 0, payloadSize);
+	}
+	m_vertices.push_back(new Vertex(pos, payload));
 	return idx;
 }
 
-int HETriMesh::AddVertexUnique(const Vec3& pos)
+int HETriMesh::AddVertexUnique(const Vec3& pos, int payloadSize)
 {
 	for(int i = 0, c = m_vertices.size(); i < c; ++i)
 	{
 		if(m_vertices[i]->m_pos == pos)
 			return i;
 	}
-	return AddVertex(pos);
+	return AddVertex(pos, payloadSize);
 }
 
-int HETriMesh::AddFace(int v0, int v1, int v2)
+int HETriMesh::AddFace(int v0, int v1, int v2, int payloadSize)
 {
 	if(v0 < 0 || v1 < 0 || v2 < 0)
 		return -1;
@@ -61,6 +68,13 @@ int HETriMesh::AddFace(int v0, int v1, int v2)
 		m_faces.pop_back();
 		delete face;
 		return -1;
+	}
+
+	if(payloadSize > 0)
+	{
+		face->m_payload = new char[payloadSize];
+		if(m_flags & OPT_INITPAYLOAD)
+			memset(face->m_payload, 0, payloadSize);
 	}
 
 	return faceIdx;
@@ -191,5 +205,29 @@ void HETriMesh::GetFace(int faceIdx, int (&indices)[3]) const
 	indices[0] = face->m_vertices[0];
 	indices[1] = face->m_vertices[1];
 	indices[2] = face->m_vertices[2];
+}
+	
+char * HETriMesh::GetVertexData(int index) 
+{
+	Vertex* vertex = m_vertices[index];
+	return vertex->m_payload;
+}
+
+const char * HETriMesh::GetVertexData(int index) const 
+{
+	const Vertex* vertex = m_vertices[index];
+	return vertex->m_payload;
+}
+
+const char * HETriMesh::GetFaceData(int index) const 
+{
+	const Face* face = m_faces[index];
+	return face->m_payload;
+}
+
+char * HETriMesh::GetFaceData(int index) 
+{
+	Face* face = m_faces[index];
+	return face->m_payload;
 }
 

@@ -27,12 +27,17 @@ class HETriMesh
 
 	struct Face
 	{
-		Face()
+		Face() : m_payload(0)
 		{
 			for(int i = 0; i < 3; ++i)
 				m_vertices[i] = m_edges[i] = -1;
 		}
 
+		~Face() {
+			delete[] m_payload;
+		}
+
+		char * m_payload;
 		int m_vertices[3];
 		int m_edges[3];
 
@@ -47,12 +52,14 @@ class HETriMesh
 
 	struct Vertex
 	{
-		Vertex()
+		Vertex() : m_payload(0)
 		{}
+		~Vertex() { delete[] m_payload; }
 
-		Vertex(Vec3_arg pos) : m_pos(pos) {}
+		Vertex(Vec3_arg pos, char * payload) : m_pos(pos), m_payload(payload) {}
 
 		Vec3 m_pos;
+		char * m_payload;
 		std::vector<int> m_edges;
 	};
 
@@ -63,20 +70,25 @@ class HETriMesh
 public:
 	enum OptFlags {
 		OPT_TRYMATCH = (1 << 0),
+		OPT_INITPAYLOAD = (1 << 1),
 	};
 	explicit HETriMesh(int flags);
 	~HETriMesh();
 
 	// Creation functions
-	int AddVertex(const Vec3& pos);
-	int AddVertexUnique(const Vec3& pos);
-	int AddFace(int v0, int v1, int v2);
+	int AddVertex(const Vec3& pos, int payloadSize = 0);
+	int AddVertexUnique(const Vec3& pos, int payloadSize = 0);
+	int AddFace(int v0, int v1, int v2, int payloadSize = 0);
 
 	// reading functions
 	const Vec3& GetVertexPos(int vertex) const;
 	void GetFace(int face, int (&indices)[3]) const;
 	int NumFaces() const { return m_faces.size(); }
 	int NumVertices() const { return m_vertices.size(); }
+	char * GetVertexData(int index) ;
+	const char * GetVertexData(int index) const ;
+	char * GetFaceData(int index) ;
+	const char * GetFaceData(int index) const ;
 
 private:
 	HETriMesh(const HETriMesh&);
