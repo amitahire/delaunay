@@ -113,9 +113,9 @@ bool HETriMesh::ConnectEdge(int vertexIdx, int edge)
 		if(vertHalfEdge->m_from == halfEdge->m_from &&
 			vertHalfEdge->m_to == halfEdge->m_to)
 		{
-			printf("WARNING: vertex already has an edge %d from %d to %d.\n", vertEdge, 
-				vertHalfEdge->m_from,
-				vertHalfEdge->m_to);
+			//printf("WARNING: vertex already has an edge %d from %d to %d.\n", vertEdge, 
+			//	vertHalfEdge->m_from,
+			//	vertHalfEdge->m_to);
 			return false;
 		}
 	}
@@ -132,8 +132,8 @@ bool HETriMesh::ConnectEdge(int vertexIdx, int edge)
 		{
 			if(vertHalfEdge->m_dual != -1)
 			{
-				printf("WARNING: non-manifold mesh detected (edge %d has a dual)\n",
-					vertEdge);
+			//	printf("WARNING: non-manifold mesh detected (edge %d has a dual)\n",
+			//		vertEdge);
 				return false;
 			}
 

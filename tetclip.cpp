@@ -84,6 +84,7 @@ void OnKeyboard(unsigned char key, int x, int y);
 void OnSpecialKeyboard(int key, int x, int y);
 void OnPassiveMotion(int x, int y);
 void OnMotion(int x, int y);
+void FindFloating(bool forward);
 
 int main(int argc, char **argv)
 {
@@ -197,10 +198,14 @@ HETriMesh* ReadMesh(const char* filename)
 
 						if(result->AddFace(v0, v1, v2) < 0)
 						{
+							const Vec3& pt0 = result->GetVertexPos(v0) ;
+							const Vec3& pt1 = result->GetVertexPos(v1) ;
+							const Vec3& pt2 = result->GetVertexPos(v2) ;
+
 							// create a floating triangle
-							v0 = result->AddVertex( result->GetVertexPos(v0) );
-							v1 = result->AddVertex( result->GetVertexPos(v1) );
-							v2 = result->AddVertex( result->GetVertexPos(v2) );
+							v0 = result->AddVertex(pt0); 
+							v1 = result->AddVertex(pt1);
+							v2 = result->AddVertex(pt2);
 
 							int floatingIdx = result->AddFace(v0, v1, v2, sizeof(bool));
 							if(floatingIdx < 0)
@@ -247,6 +252,8 @@ static Vec3 g_center(0,0,0);
 static Vec3 g_centerTarget(0.f, 0.f, 0.f);		// camera center to lerp to
 static int g_lastx = -1, g_lasty = -1;
 static bool g_showBackface = true;
+static bool g_showFloatingFaces = false;
+static int g_currentFloating = -1;
 
 void SetupGL()
 {
@@ -258,6 +265,7 @@ void SetupGL()
 	OnReshape(800, 800);
 	glEnable(GL_LIGHT0);
 	glEnable(GL_LIGHTING);
+	glEnable(GL_COLOR_MATERIAL);
 	
 
 	if(g_triMesh)
@@ -346,10 +354,10 @@ void OnDisplay(void)
 	{
 		const char * data = g_triMesh->GetFaceData(i);
 		const bool * boolData = reinterpret_cast<const bool*>(data);
-		if(boolData == 0 || *boolData == false)
+		if(!g_showFloatingFaces || boolData == 0 || *boolData == false)
 			glColor4f(0.8f, 0.8f, 0.8f, 1.f);
 		else
-			glColor4f(0.8f, 0.4f, 0.4f, 1.f);
+			glColor4f(0.8f, 0.4f, 0.4f, 0.8f);
 
 		int verts[3];
 		g_triMesh->GetFace(i, verts);
@@ -369,7 +377,7 @@ void OnDisplay(void)
 		{
 			const char * data = g_triMesh->GetFaceData(i);
 			const bool * boolData = reinterpret_cast<const bool*>(data);
-			if(boolData == 0 || *boolData == false)
+			if(!g_showFloatingFaces || boolData == 0 || *boolData == false)
 				glColor4f(0.8f, 0.8f, 0.8f, 1.f);
 			else
 				glColor4f(0.8f, 0.4f, 0.4f, 0.8f);
@@ -396,6 +404,19 @@ void OnKeyboard(unsigned char key, int x, int y)
 	if(key == ' ')
 	{
 		g_showBackface = !g_showBackface;
+		glutPostRedisplay();
+	}
+	else if(key == 'n')
+	{
+		FindFloating(true);
+	}
+	else if(key == 'p')
+	{
+		FindFloating(false);
+	}
+	else if(key == 'f')
+	{
+		g_showFloatingFaces = !g_showFloatingFaces;
 		glutPostRedisplay();
 	}
 }
@@ -443,4 +464,50 @@ void OnMotion(int x, int y)
 	glutPostRedisplay();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+void FindFloating(bool forward)
+{
+	if(!g_triMesh) return;
+	int count = g_triMesh->NumFaces();
+	int cur = g_currentFloating;
+	if(cur == -1) cur = 0;
+	else cur = (forward ? (cur + 1) % count : (cur + count - 1) % count);
+	int i;
+	for(i = 0; i < count; ++i)
+	{
+		const char * data = g_triMesh->GetFaceData(cur);
+		if(data)
+		{
+			const bool * boolData = reinterpret_cast<const bool*>(data);
+			if(*boolData) {
+				g_currentFloating = cur;
+				break;
+			}
+		}
+
+		cur = (forward ? (cur + 1) % count : (cur + count - 1) % count);
+	}
+	if(i == count)
+	{
+		g_currentFloating = -1;
+		Vec3 avgPoint(0,0,0);
+		float avgFactor = 1.f / g_triMesh->NumVertices();
+
+		for(int i = 0, c = g_triMesh->NumVertices(); i < c; ++i)
+		{
+			const Vec3& pt = g_triMesh->GetVertexPos(i);
+			avgPoint += avgFactor * pt;
+		}
+		g_centerTarget = avgPoint;
+	}
+	else
+	{
+		int verts[3];
+		g_triMesh->GetFace(g_currentFloating, verts);
+		const Vec3& pt0 = g_triMesh->GetVertexPos(verts[0]);
+		const Vec3& pt1 = g_triMesh->GetVertexPos(verts[1]);
+		const Vec3& pt2 = g_triMesh->GetVertexPos(verts[2]);
+		g_centerTarget = (1.f/3.f) * (pt0 + pt1 + pt2);
+	}
+}
 
