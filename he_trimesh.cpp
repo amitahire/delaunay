@@ -47,13 +47,57 @@ int HETriMesh::AddFace(int v0, int v1, int v2, int payloadSize)
 	if(v0 < 0 || v1 < 0 || v2 < 0)
 		return -1;
 
+	if( (m_flags & OPT_REPLACE_SMALLER_ON_CONFLICT) || (m_flags & OPT_IGNORE_SMALL) )
+	{
+		const Vec3& pt0 = m_vertices[v0]->m_pos;
+		const Vec3& pt1 = m_vertices[v1]->m_pos;
+		const Vec3& pt2 = m_vertices[v2]->m_pos;
+		float parallelogramAreaSqNew = magnitude_squared(cross(pt1 - pt0, pt2 - pt0));
+		
+		if(m_flags & OPT_IGNORE_SMALL)
+		{
+			if(parallelogramAreaSqNew < EPSILON)
+				return -1;
+		}
+
+		if(m_flags & OPT_REPLACE_SMALLER_ON_CONFLICT) 
+		{
+			int verts[3];
+			verts[0] = v0;
+			verts[1] = v1;
+			verts[2] = v2;
+			for(int i = 0; i < 3; ++i)
+			{
+				int edgeIndex = FindEdge(verts[i], verts[(i+1)%3]);
+				if(edgeIndex >= 0)
+				{
+					HalfEdge *halfEdge = m_edges[edgeIndex];
+					if(halfEdge->m_face >= 0)
+					{
+						Face* existingFace = m_faces[halfEdge->m_face];
+						const Vec3& npt0 = m_vertices[existingFace->m_vertices[0]]->m_pos;
+						const Vec3& npt1 = m_vertices[existingFace->m_vertices[1]]->m_pos;
+						const Vec3& npt2 = m_vertices[existingFace->m_vertices[2]]->m_pos;
+						float parallelogramAreaSqExisting = magnitude_squared(cross(npt1 - npt0, npt2 - npt0));
+
+						if(parallelogramAreaSqExisting < parallelogramAreaSqNew) 
+							DeleteFace(halfEdge->m_face);
+					}
+				}
+			}
+		}
+	}
+	
+	if((EdgeExistsWithFace(v0, v1) || EdgeExistsWithFace(v1, v2) || EdgeExistsWithFace(v2, v0)))
+	{
+		if(m_flags & OPT_TRYMATCH)
+			Swap(v1, v2);
+		else return -1;
+	}
+
 	int faceIdx = m_faces.size();
 	Face* face = new Face();
 	m_faces.push_back(face);
-	
-	if((m_flags & OPT_TRYMATCH) && 
-		(EdgeExistsWithFace(v0, v1) || EdgeExistsWithFace(v1, v2) || EdgeExistsWithFace(v2, v0)))
-		Swap(v1, v2);
 
 	face->m_vertices[0] = v0;
 	face->m_vertices[1] = v1;
@@ -65,6 +109,9 @@ int HETriMesh::AddFace(int v0, int v1, int v2, int payloadSize)
 
 	if(face->m_edges[0] < 0 || face->m_edges[1] < 0 || face->m_edges[2] < 0)
 	{
+		for(int i = 0; i < 3; ++i)
+			if(face->m_edges[i] >= 0)
+				RemoveEdge(face->m_edges[i]);
 		m_faces.pop_back();
 		delete face;
 		return -1;
@@ -77,8 +124,60 @@ int HETriMesh::AddFace(int v0, int v1, int v2, int payloadSize)
 			memset(face->m_payload, 0, payloadSize);
 	}
 
+	//DebugVerify();
 	return faceIdx;
 }
+
+bool HETriMesh::Vertex::RemoveEdge(int edgeIdx)
+{
+	for(int i = 0, c = m_edges.size(); i < c; ++i)
+	{
+		if(m_edges[i] == edgeIdx)
+		{
+			for(int j = i; j < c - 1; ++j)
+			{
+				m_edges[j] = m_edges[j+1];
+			}
+			m_edges.pop_back();
+			return true;
+		}
+	}
+	return false;
+}
+
+void HETriMesh::DeleteFace(int index)
+{
+	Face* face = m_faces[index];
+	for(int i = 0; i < 3; ++i)
+	{
+		int oldEdge = face->m_edges[i];
+		face->m_edges[i] = -1;
+
+		HalfEdge* edge = m_edges[oldEdge];
+		edge->m_face = -1;
+
+		int oldVert = edge->m_from;
+		if(edge->m_dual >= 0)
+		{
+			HalfEdge* dual = m_edges[edge->m_dual];
+			dual->m_dual = -1;
+		}
+
+		Vertex* vertex = m_vertices[oldVert];
+		VERIFY(vertex->RemoveEdge(oldEdge));
+
+		delete edge;
+		if(!m_edges.empty()) MoveEdge(oldEdge, m_edges.size() - 1);
+		m_edges.pop_back();
+	}
+
+	delete face;
+	if(!m_faces.empty()) MoveFace(index, m_faces.size() - 1);
+	m_faces.pop_back();
+
+	//DebugVerify();
+}
+
 	
 int HETriMesh::AddEdge(int face, int start, int end)
 {
@@ -181,17 +280,28 @@ bool HETriMesh::ConnectEdge(int vertexIdx, int edge)
 
 bool HETriMesh::EdgeExistsWithFace(int from, int to) const
 {
+	int edgeIdx = FindEdge(from, to);
+	if(edgeIdx >= 0)
+	{
+		HalfEdge* edge = m_edges[edgeIdx];
+		if(edge->m_dual != -1)
+			return true;
+	}
+	return false;
+}
+	
+int HETriMesh::FindEdge(int from, int to) const
+{
 	Vertex* vertex = m_vertices[from];
 	for(int i = 0, c = vertex->m_edges.size(); i < c; ++i)
 	{
 		HalfEdge* edge = m_edges[vertex->m_edges[i]];
-		if(edge->m_to == to && edge->m_dual != -1)
-			return true;
+		if(edge->m_to == to)
+			return vertex->m_edges[i];
 	}
 
-	return false;
+	return -1;
 }
-
 
 const Vec3& HETriMesh::GetVertexPos(int vertexIdx) const
 {
@@ -229,5 +339,100 @@ char * HETriMesh::GetFaceData(int index)
 {
 	Face* face = m_faces[index];
 	return face->m_payload;
+}
+	
+void HETriMesh::RemoveEdge(int edgeIndex)
+{
+	HalfEdge* edge = m_edges[edgeIndex];
+	Vertex* vtx = m_vertices[edge->m_from];
+	vtx->RemoveEdge(edgeIndex);
+
+	if(edge->m_dual >= 0)
+	{
+		HalfEdge* dual = m_edges[edge->m_dual];
+		dual->m_dual = -1;
+	}
+	
+	delete edge;
+	if(!m_edges.empty()) MoveEdge(edgeIndex, m_edges.size() - 1);
+	m_edges.pop_back();
+}
+
+void HETriMesh::MoveEdge(int newIndex, int oldIndex)
+{
+	if(newIndex == oldIndex)
+	{
+		m_edges[oldIndex] = 0;
+		return;
+	}
+	HalfEdge* edge = m_edges[oldIndex];
+	m_edges[newIndex] = edge;
+	m_edges[oldIndex] = 0;
+
+	// patch indexes referring to this edge.
+	Face* face = m_faces[edge->m_face];
+	int i = face->IndexOfEdge(oldIndex);
+	VERIFY(i != -1);
+	face->m_edges[i] = newIndex;
+
+	ASSERT(edge->m_face == m_edges[face->m_edges[i]]->m_face);
+
+	if(edge->m_dual >= 0)
+	{
+		HalfEdge* dual = m_edges[edge->m_dual];
+		dual->m_dual = newIndex;
+	}
+
+	Vertex* vertex = m_vertices[edge->m_from];
+	i = vertex->IndexOfEdge(oldIndex);
+	VERIFY(i != -1);
+	vertex->m_edges[i] = newIndex;
+}
+
+void HETriMesh::MoveFace(int newIndex, int oldIndex)
+{	
+	if(newIndex == oldIndex)
+	{
+		m_faces[oldIndex] = 0;
+		return;
+	}
+	Face* face = m_faces[oldIndex];
+	m_faces[newIndex] = face;
+	m_faces[oldIndex] = 0;
+
+	for(int i = 0; i < 3; ++i)
+	{
+		HalfEdge *edge = m_edges[face->m_edges[i]];
+		ASSERT(-1 != face->IndexOfVert(edge->m_from));
+		ASSERT(-1 != face->IndexOfVert(edge->m_to));
+		edge->m_face = newIndex;
+	}
+}	
+
+void HETriMesh::DebugVerify()
+{
+	for(int i = 0, c = m_faces.size(); i < c; ++i)
+	{
+		Face * face = m_faces[i];
+		if(!face) continue;
+		for(int j = 0; j < 3; ++j)
+		{
+			VERIFY(m_edges[face->m_edges[j]]->m_face == i);
+			int edgeIdx = FindEdge(face->m_vertices[j], face->m_vertices[ (j+1)%3 ]);
+			VERIFY(-1 != edgeIdx);
+			VERIFY(face->IndexOfEdge(edgeIdx) != -1);
+		}
+	}
+
+	for(int i = 0, c = m_edges.size(); i < c; ++i)
+	{
+		HalfEdge * edge = m_edges[i];
+		if(!edge) continue;
+		if(edge->m_dual >= 0)
+			VERIFY(m_edges[edge->m_dual]->m_dual == i);
+		Vertex * vtx = m_vertices[edge->m_from];
+
+		VERIFY(-1 != vtx->IndexOfEdge(i));
+	}
 }
 

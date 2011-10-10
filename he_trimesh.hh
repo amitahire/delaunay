@@ -48,6 +48,14 @@ class HETriMesh
 			}
 			return -1;
 		}
+
+		int IndexOfEdge(int edge) const {
+			for(int i = 0; i < 3; ++i) {
+				if(edge == m_edges[i])
+					return i;
+			}
+			return -1;
+		}
 	};
 
 	struct Vertex
@@ -61,6 +69,14 @@ class HETriMesh
 		Vec3 m_pos;
 		char * m_payload;
 		std::vector<int> m_edges;
+
+		bool RemoveEdge(int edgeIdx);
+		int IndexOfEdge(int edge) const {
+			for(int i = 0, c = m_edges.size(); i < c; ++i)
+				if(m_edges[i] == edge)
+					return i;
+			return -1;
+		}
 	};
 
 	int m_flags;
@@ -71,14 +87,19 @@ public:
 	enum OptFlags {
 		OPT_TRYMATCH = (1 << 0),
 		OPT_INITPAYLOAD = (1 << 1),
+		OPT_REPLACE_SMALLER_ON_CONFLICT = (1 << 2),
+		OPT_IGNORE_SMALL = (1 << 3),
 	};
-	explicit HETriMesh(int flags);
+	explicit HETriMesh(int flags = 0);
 	~HETriMesh();
 
 	// Creation functions
 	int AddVertex(const Vec3& pos, int payloadSize = 0);
 	int AddVertexUnique(const Vec3& pos, int payloadSize = 0);
 	int AddFace(int v0, int v1, int v2, int payloadSize = 0);
+
+	// Modification functions
+	void DeleteFace(int index);
 
 	// reading functions
 	const Vec3& GetVertexPos(int vertex) const;
@@ -97,5 +118,12 @@ private:
 	int AddEdge(int face, int start, int end);
 	bool ConnectEdge(int vertex, int edge);
 	bool EdgeExistsWithFace(int from, int to) const;
+	int FindEdge(int from, int to) const;
+
+	void RemoveEdge(int edgeIndex);
+	void MoveEdge(int newIndex, int oldIndex);
+	void MoveFace(int newIndex, int oldIndex);
+	
+	void DebugVerify();
 };
 

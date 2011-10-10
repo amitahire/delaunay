@@ -159,7 +159,7 @@ HETriMesh* ReadMesh(const char* filename)
 	HETriMesh * result = 0;
 	if(ply.Read(fp))
 	{
-		result = new HETriMesh(HETriMesh::OPT_TRYMATCH | HETriMesh::OPT_INITPAYLOAD);
+		result = new HETriMesh(HETriMesh::OPT_INITPAYLOAD);
 		PlyData::ElementReader vertexReader = ply.GetElement("vertex");
 		if(vertexReader.Valid())
 		{
@@ -212,11 +212,14 @@ HETriMesh* ReadMesh(const char* filename)
 							{
 								printf("Failed to create floating triangle.\n");
 							}
-							char * data = result->GetFaceData(floatingIdx);
-							bool * boolData = reinterpret_cast<bool*>(data);
-							*boolData = true;
+							else
+							{
+								char * data = result->GetFaceData(floatingIdx);
+								bool * boolData = reinterpret_cast<bool*>(data);
+								*boolData = true;
 
-							++totalFloatingTris;
+								++totalFloatingTris;
+							}
 						}
 					}
 					else printf("WARNING: primitive with %d verts not supported.\n", count);
