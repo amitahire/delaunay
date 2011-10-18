@@ -323,3 +323,4 @@ char * TriMesh::GetFaceData(int index)
 	Face* face = m_faces[index];
 	return face->m_payload;
 }
+
