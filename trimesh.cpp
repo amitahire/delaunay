@@ -24,13 +24,13 @@ bool TriMesh::Edge::operator<(const Edge& other) const
 ////////////////////////////////////////////////////////////////////////////////	
 struct TriMesh::Vertex
 {
-	Vertex() : m_pos(), m_payload(0), m_payloadSize(0), m_firstFace(-1), m_boundary(false) {}
+	Vertex() : m_pos(), m_payload(0), m_payloadSize(0), m_firstFace(-1), m_flags(0) {}
 	Vertex(const Vertex& other)
 		: m_pos(other.m_pos)
 		, m_payload( other.m_payloadSize > 0 ? new char[other.m_payloadSize] : 0)
 		, m_payloadSize(other.m_payloadSize)
 		, m_firstFace(other.m_firstFace)
-		, m_boundary(other.m_boundary)
+		, m_flags(other.m_flags)
 	{
 		if(m_payloadSize > 0)
 			memcpy(m_payload, other.m_payload, m_payloadSize);
@@ -44,6 +44,7 @@ struct TriMesh::Vertex
 			m_payload = 0;
 			m_payloadSize = other.m_payloadSize;
 			m_firstFace = other.m_firstFace;
+			m_flags = other.m_flags;
 
 			if(m_payloadSize > 0)
 			{
@@ -55,11 +56,14 @@ struct TriMesh::Vertex
 		return *this;
 	}
 
+	inline bool IsBoundary() const { return (m_flags & VERTEX_BOUNDARY); }
+	void SetBoundary(bool b) { if(b) { m_flags |= VERTEX_BOUNDARY; } else { m_flags &= ~VERTEX_BOUNDARY; } }
+
 	Vec3 m_pos;
 	ScopedPtrAry<char>::Type m_payload;
 	int m_payloadSize;
 	int m_firstFace;
-	bool m_boundary;
+	int m_flags;
 };
 
 ////////////////////////////////////////////////////////////////////////////////	
@@ -210,7 +214,7 @@ int TriMesh::AddVertexUnique(const Vec3& pos, int payloadSize)
 	return AddVertex(pos, payloadSize);
 }
 
-void TriMesh::AttemptCreateEdges(int faceIdx, bool &nonManifold, bool &wrongFacing)
+void TriMesh::AttemptCreateEdges(int faceIdx, bool markNonManifold, bool &nonManifold, bool &wrongFacing)
 {
 	Face* face = m_faces[faceIdx];
 	// Fixup edges
@@ -234,8 +238,11 @@ void TriMesh::AttemptCreateEdges(int faceIdx, bool &nonManifold, bool &wrongFaci
 				// as having manifold problems, but refuse to add this face.
 				Face* face0 = m_faces[iter->m_faces[0]];
 				Face* face1 = m_faces[iter->m_faces[1]];
-				face0->m_flags |= FACE_NONMANIFOLD;
-				face1->m_flags |= FACE_NONMANIFOLD;
+				if(markNonManifold)
+				{
+					face0->m_flags |= FACE_NONMANIFOLD;
+					face1->m_flags |= FACE_NONMANIFOLD;
+				}
 
 				nonManifold = true;
 			}
@@ -273,12 +280,13 @@ int TriMesh::AddFace(int v0, int v1, int v2, int payloadSize)
 	
 	bool nonManifold = false;
 	bool wrongFacing = false;
-	AttemptCreateEdges(faceIdx, nonManifold, wrongFacing);
+	AttemptCreateEdges(faceIdx, false, nonManifold, wrongFacing);
 	if(nonManifold)
 	{
 		DeleteFace(faceIdx);
 		return -1;
 	}
+
 	if(wrongFacing)
 	{
 		DeleteFace(faceIdx);
@@ -290,7 +298,7 @@ int TriMesh::AddFace(int v0, int v1, int v2, int payloadSize)
 		for(int i = 0; i < 3; ++i)
 			face->m_vertices[i] = verts[i];
 
-		AttemptCreateEdges(faceIdx, nonManifold, wrongFacing);
+		AttemptCreateEdges(faceIdx, true, nonManifold, wrongFacing);
 		if(nonManifold || wrongFacing)
 		{
 			DeleteFace(faceIdx);
@@ -323,7 +331,7 @@ int TriMesh::AddFace(int v0, int v1, int v2, int payloadSize)
 		{
 			faceIdx = GetNextFace(faceIdx, verts[i]);
 		} while (faceIdx != -1 && faceIdx != firstFace);
-		vertex->m_boundary = (faceIdx == -1);
+		vertex->SetBoundary(faceIdx == -1);
 	}
 	return faceIdx;
 }
@@ -338,6 +346,12 @@ void TriMesh::GetFace(int faceIdx, int (&indices)[3]) const
 	Face* face = m_faces[faceIdx];
 	for(int i = 0; i < 3; ++i)
 		indices[i] = face->m_vertices[i];
+}
+	
+int TriMesh::GetVertexFlags(int index) const
+{
+	const Vertex* vertex = m_vertices[index];
+	return vertex->m_flags;
 }
 
 char * TriMesh::GetVertexData(int index) 
@@ -381,6 +395,13 @@ int TriMesh::GetNeighborFaceIndex(int faceIndex, int neighborFace) const
 	return -1;
 }
 
+int TriMesh::GetFaceNeighbor(int faceIdx, int fnum) const
+{
+	ASSERT(fnum >= 0 && fnum < 3);
+	const Face* face = m_faces[faceIdx];
+	return face->m_faces[fnum];
+}
+
 int TriMesh::GetVertexNumInFace(int faceIndex, int vertexIdx) const
 {
 	const Face* face = m_faces[faceIndex];
@@ -392,15 +413,15 @@ int TriMesh::GetVertexNumInFace(int faceIndex, int vertexIdx) const
 	return -1;
 }
 	
-bool TriMesh::GetOneRing(int vertexIndex, int* ring, int max) const 
+int TriMesh::GetOneRing(int vertexIndex, int* ring, int max) const 
 {
 	int valency = GetVertexValency(vertexIndex);
 	if(max < valency)
-		return false;
+		return 0;
 	const Vertex* vertex = m_vertices[vertexIndex];
 	const int firstFace = vertex->m_firstFace;
 	int curFace = firstFace;
-	if(vertex->m_boundary)
+	if(vertex->IsBoundary())
 	{
 		int curFace = firstFace;
 		do {
@@ -414,20 +435,21 @@ bool TriMesh::GetOneRing(int vertexIndex, int* ring, int max) const
 	do {
 		ASSERT(ringIndex < max);
 		int nextVertexIdx = GetVertexNumInFace(vertexIndex, curFace);
-		if(nextVertexIdx < 0) return false;
+		if(nextVertexIdx < 0) return 0;
 		nextVertexIdx = (nextVertexIdx + 1) % 3;
 		const Face* face = m_faces[curFace];
 		ring[ringIndex++] = face->m_vertices[nextVertexIdx];
 
 		curFace = GetNextFace(curFace, vertexIndex);
 	} while(curFace != -1 && curFace != firstFace);
-	return true;	
+	return ringIndex;	
 }
 	
 int TriMesh::GetNextFace(int faceIdx, int vertexFrom) const
 {
 	int vnum = GetVertexNumInFace(faceIdx, vertexFrom);
-	if(vnum < 0) return -1;
+	ASSERT(vnum >= 0);
+	if(vnum < 0) return -2;
 	const Face* face = m_faces[faceIdx];
 	return face->m_faces[vnum];
 }
@@ -435,7 +457,8 @@ int TriMesh::GetNextFace(int faceIdx, int vertexFrom) const
 int TriMesh::GetPrevFace(int faceIdx, int vertexFrom) const
 {
 	int vnum = GetVertexNumInFace(faceIdx, vertexFrom);
-	if(vnum < 0) return -1;
+	ASSERT(vnum >= 0);
+	if(vnum < 0) return -2;
 	const Face* face = m_faces[faceIdx];
 	return face->m_faces[(vnum + 2)%3];
 }
@@ -447,7 +470,7 @@ int TriMesh::GetVertexValency(int vertexIdx) const
 	if(firstFace < 0)
 		return 0;
 	int count = 1;
-	if(vertex->m_boundary)
+	if(vertex->IsBoundary())
 	{
 		int curFace = firstFace;
 		while((curFace = GetNextFace(curFace, vertexIdx)) != -1)
@@ -538,8 +561,8 @@ void TriMesh::DeleteFace(int faceIndex)
 			Face* faceNeighbor = m_faces[ face->m_faces[i] ];
 			int fnum = GetNeighborFaceIndex(face->m_faces[i], faceIndex);
 			faceNeighbor->m_faces[fnum] = -1;
-			m_vertices[faceNeighbor->m_vertices[fnum]]->m_boundary = true;
-			m_vertices[faceNeighbor->m_vertices[(fnum+1)%3]]->m_boundary = true;
+			m_vertices[faceNeighbor->m_vertices[fnum]]->SetBoundary(true);
+			m_vertices[faceNeighbor->m_vertices[(fnum+1)%3]]->SetBoundary(true);
 		}
 	}
 
@@ -619,9 +642,206 @@ int TriMesh::RemoveProblemTriangles()
 	return count;
 }
 
+int TriMesh::RemoveUnreachableTriangles()
+{
+	int count = 0;
+	for(int i = m_faces.size() - 1; i >= 0; --i)
+	{
+		Face* face = m_faces[i];
+		for(int j = 0; j < 3; ++j)
+		{
+			if(!FaceAdjacent(i, face->m_vertices[j]))
+			{
+				DeleteFace(i);
+				++count;
+				break;
+			}
+		}
+	}
+	return count;
+}
+	
+bool TriMesh::FaceAdjacent(int face, int adjVert) const
+{
+	const int firstFace = m_vertices[adjVert]->m_firstFace;
+	if(firstFace < 0)
+		return false;
+	int curFace = firstFace;
+	do
+	{
+		int prevFace = GetPrevFace(curFace, adjVert);
+		if(prevFace == -1)
+			break;
+		curFace = prevFace;
+	} while(curFace != firstFace);
+
+	do
+	{
+		if(curFace == face)
+			return true;
+		curFace = GetNextFace(curFace, adjVert);
+	} while(curFace >= 0 && curFace != firstFace);
+
+	return false;
+}
+
+int TriMesh::CleanBoundaries()
+{
+	int count = 0;
+	count += RemoveProblemTriangles();
+
+	for(int i = m_faces.size() - 1; i >= 0; --i)
+	{
+		Face* face = m_faces[i];
+		bool allBoundary = true;
+		int numEmptyFaces = 0;
+		for(int j = 0; j < 3; ++j)
+		{
+			bool isBoundary = m_vertices[face->m_vertices[j]]->IsBoundary();
+			allBoundary = allBoundary && isBoundary;
+			if(face->m_faces[j] == -1)
+				++numEmptyFaces;
+		}
+
+		if(allBoundary && numEmptyFaces >= 2)
+		{
+			DeleteFace(i);
+			++count;
+		}
+	}
+	return count;
+
+}
+
 int TriMesh::FillHoles()
 {
+	int numFilled = 0;
+	int curFace = 0;
+	int lastProblemFace = 0;
+	const int numFaces = m_faces.size();
 
+	if(numFaces == 0) return 0;
+	do
+	{
+		Face* face = m_faces[curFace];
+		int flag = FACE_IGNORE_LOOP0;
+		for(int i = 0; i < 3; ++i)
+		{
+			if(face->m_flags & flag)
+			{
+				printf("Skipping!\n");
+				continue;
+			}
+			if(face->m_faces[i] < 0)
+			{
+				lastProblemFace = curFace;
+				int boundaryLoop[64];
+				int loopSize = GetBoundaryLoop(curFace, face->m_vertices[i], boundaryLoop, ARRAY_SIZE(boundaryLoop));
+				if(loopSize == 0)
+				{
+					face->m_flags |= flag;
+				}
+				else if(FillHole(boundaryLoop, loopSize))
+				{
+					++numFilled;
+				}
+				else
+				{
+					face->m_flags |= flag;
+				}
+				break;
+			}
+			flag *= 2;
+		}
+		curFace = (curFace + 1) % numFaces;
+	} while (curFace != lastProblemFace);
+
+	return numFilled;
+}
+
+int TriMesh::GetBoundaryLoop(int faceIdx, int vertIdx, int* boundaryLoop, int maxLoopSize) const
+{
+	if(maxLoopSize < 3)
+		return 0;
+	int loopSize = 0;
+
+	int vnum = GetVertexNumInFace(faceIdx, vertIdx);
+	ASSERT(m_faces[faceIdx]->m_faces[vnum] == -1);
+	boundaryLoop[loopSize++] = vertIdx;
+	int nextVert = m_faces[faceIdx]->m_vertices[(vnum + 1)%3];
+	boundaryLoop[loopSize++] = nextVert;
+
+	int curVertex = nextVert;
+	int curFace = faceIdx;
+	while(loopSize < maxLoopSize)
+	{
+		const int firstFace = curFace;
+		do
+		{
+			int nextFace = GetNextFace(curFace, curVertex);
+			if(nextFace == -1)
+				break;
+			curFace = nextFace;
+		} while (curFace != firstFace);
+
+		int vnum = GetVertexNumInFace(curFace, curVertex);
+		if(m_faces[curFace]->m_faces[vnum] >= 0)
+		{
+			printf("Not a boundary.\n");
+			return 0;
+		}
+
+		curVertex = m_faces[curFace]->m_vertices[(vnum + 1)%3];
+		if(curVertex == vertIdx)
+		{
+			return loopSize;
+		}
+		else
+		{
+			boundaryLoop[loopSize++] = curVertex;
+		}
+	}
+
+	printf("Boundary loop too small (never got back to %d)\n", vertIdx);
+	for(int i = 0; i < loopSize; ++i)
+	{
+		printf("%d ", boundaryLoop[i]);
+	}
+	printf("\n");
 	return 0;
 }
 
+
+bool TriMesh::FillHole(int* boundaryLoop, int loopSize)
+{
+	if(loopSize < 3)
+		return false;
+	int prevIdx = 0;
+	int leftIdx = 1;
+	int rightIdx = loopSize - 1;
+	bool toggle = true;
+	while(leftIdx < rightIdx)
+	{
+		int faceIdx = AddFace(boundaryLoop[prevIdx], 
+			boundaryLoop[rightIdx],
+			boundaryLoop[leftIdx]) ;
+		if(faceIdx < 0)
+			return false;
+		else
+		{
+			m_faces[faceIdx]->m_flags |= FACE_HOLE_FILLER;
+		}
+
+		if( toggle )
+		{
+			prevIdx = leftIdx++;
+		}
+		else
+		{
+			prevIdx = rightIdx--;
+		}
+		toggle = !toggle;
+	}
+
+	return true;
+}

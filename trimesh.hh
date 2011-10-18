@@ -14,7 +14,20 @@ public:
 	////////////////////////////////////////////////////////////////////////////////	
 	enum FaceFlags
 	{
-		FACE_NONMANIFOLD = (1 << 0)
+		FACE_NONMANIFOLD = (1 << 0),
+		FACE_IGNORE_LOOP0 = (1 << 1),
+		FACE_IGNORE_LOOP1 = (1 << 2),
+		FACE_IGNORE_LOOP2 = (1 << 3),
+
+		FACE_HOLE_FILLER = (1 << 4),
+
+		FACE_IGNORE_ANY_LOOP = 0x0E
+
+	};
+
+	enum VertexFlags
+	{
+		VERTEX_BOUNDARY = (1 << 0)
 	};
 
 	////////////////////////////////////////////////////////////////////////////////	
@@ -32,7 +45,7 @@ public:
 
 	// Modification Functions
 	void DeleteFace(int index);
-	int RemoveProblemTriangles();
+	int CleanBoundaries();
 	int FillHoles();
 
 	// Accessor Functions
@@ -42,6 +55,7 @@ public:
 	int NumFaces() const { return m_faces.size(); }
 	int NumVertices() const { return m_vertices.size(); }
 
+	int GetVertexFlags(int index) const;
 	char * GetVertexData(int index) ;
 	const char * GetVertexData(int index) const ;
 	char * GetFaceData(int index) ;
@@ -52,9 +66,10 @@ public:
 	int GetNeighborFaceIndex(int face, int neighborFace) const;	// returns 0..2, -1 on error
 	int GetVertexNumInFace(int face, int vertexIdx) const; // returns 0..2, -1 on error
 	int GetVertexValency(int vertex) const; 
-	bool GetOneRing(int vertexIndex, int* ring, int max) const ;
+	int GetOneRing(int vertexIndex, int* ring, int max) const ;
 	int GetNextFace(int faceIdx, int vertexFrom) const;
 	int GetPrevFace(int faceIdx, int vertexFrom) const;
+	int GetFaceNeighbor(int faceIdx, int fnum) const;
 private:
 	
 	////////////////////////////////////////////////////////////////////////////////	
@@ -78,8 +93,13 @@ private:
 	int AllocateVertex();
 	int AllocateFace();
 	bool AddEdge(int start, int end);
-	void AttemptCreateEdges(int faceIdx, bool &nonManifold, bool &wrongFacing);
+	void AttemptCreateEdges(int faceIdx, bool markNonManifold, bool &nonManifold, bool &wrongFacing);
 	void MoveFace(int destIndex, int srcIndex);
+	int GetBoundaryLoop(int faceIdx, int vertexIdx, int* boundaryLoop, int maxLoopSize) const;
+	bool FillHole(int* boundaryLoop, int loopSize);
+	bool FaceAdjacent(int face, int adjVert) const;
+	int RemoveProblemTriangles();
+	int RemoveUnreachableTriangles();
 
 	////////////////////////////////////////////////////////////////////////////////	
 	std::set<Edge> m_edges;
