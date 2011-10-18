@@ -39,31 +39,9 @@ public:
 
 private:
 	////////////////////////////////////////////////////////////////////////////////	
-	struct Face
-	{
-		Face();
-		Face(const Face& other);
-		Face& operator=(const Face& other);
+	struct Face;
+	struct Vertex;
 
-		void CopyData(const Face& other);
-
-		int m_vertices[3];
-		ScopedPtrAry<char>::Type m_payload;
-		int m_payloadSize;
-	};
-
-	struct Vertex
-	{
-		Vertex();
-		Vertex(const Vertex& other);
-		Vertex& operator=(const Vertex& other);
-		
-		void CopyData(const Vertex& other);
-
-		Vec3 m_pos;
-		ScopedPtrAry<char>::Type m_payload;
-		int m_payloadSize;
-	};
 	////////////////////////////////////////////////////////////////////////////////	
 	void MoveFace(int destIdx, int srcIdx);
 	

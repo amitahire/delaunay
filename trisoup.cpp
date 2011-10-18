@@ -3,6 +3,19 @@
 #include <cstring>
 
 ////////////////////////////////////////////////////////////////////////////////
+struct TriSoup::Vertex
+{
+	Vertex();
+	Vertex(const Vertex& other);
+	Vertex& operator=(const Vertex& other);
+
+	void CopyData(const Vertex& other);
+
+	Vec3 m_pos;
+	ScopedPtrAry<char>::Type m_payload;
+	int m_payloadSize;
+};
+
 TriSoup::Vertex::Vertex()
 	: m_pos()
 	, m_payload()
@@ -40,6 +53,19 @@ void TriSoup::Vertex::CopyData(const Vertex& other)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+struct TriSoup::Face
+{
+	Face();
+	Face(const Face& other);
+	Face& operator=(const Face& other);
+
+	void CopyData(const Face& other);
+
+	int m_vertices[3];
+	ScopedPtrAry<char>::Type m_payload;
+	int m_payloadSize;
+};
+
 TriSoup::Face::Face()
 	: m_payload()
 	, m_payloadSize(0)
