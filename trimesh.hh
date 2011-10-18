@@ -8,6 +8,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 // TriMesh
 // - triangle mesh with some topology information.
+// - The current state of this class: It's great for topologically correct meshes, 
+//   but the hole filling just doesnt' work correctly. Since I'm not attempting
+//   to solve that problem for the time being, I'm going to move on to other methods.
 class TriMesh
 {
 public:
@@ -22,7 +25,6 @@ public:
 		FACE_HOLE_FILLER = (1 << 4),
 
 		FACE_IGNORE_ANY_LOOP = 0x0E
-
 	};
 
 	enum VertexFlags
@@ -56,11 +58,12 @@ public:
 	int NumVertices() const { return m_vertices.size(); }
 
 	int GetVertexFlags(int index) const;
+	int GetFaceFlags(int faceIndex) const;
+
 	char * GetVertexData(int index) ;
 	const char * GetVertexData(int index) const ;
 	char * GetFaceData(int index) ;
 	const char * GetFaceData(int index) const ;
-	int GetFaceFlags(int faceIndex) const;
 
 	// Traversal functions
 	int GetNeighborFaceIndex(int face, int neighborFace) const;	// returns 0..2, -1 on error

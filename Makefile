@@ -2,7 +2,7 @@ SRC_DELAUNAY = delaunay.cpp debugdraw.cpp math/math.cpp sparsegrid.cpp triangula
 OBJS_DELAUNAY = $(SRC_DELAUNAY:.cpp=.o)
 SRC_MAKEPOINTS = makepoints.cpp cmdhelper.cpp
 OBJS_MAKEPOINTS = $(SRC_MAKEPOINTS:.cpp=.o)
-SRC_TETCLIP = tetclip.cpp ply.cpp cmdhelper.cpp trimesh.cpp debugdraw.cpp draw.cpp math/math.cpp
+SRC_TETCLIP = tetclip.cpp ply.cpp cmdhelper.cpp trisoup.cpp debugdraw.cpp draw.cpp math/math.cpp
 OBJS_TETCLIP = $(SRC_TETCLIP:.cpp=.o)
 
 .PHONY: all

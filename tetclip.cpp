@@ -6,7 +6,7 @@
 #include "math/math.hh"
 #include "ply.hh"
 #include "cmdhelper.hh"
-#include "trimesh.hh"
+#include "trisoup.hh"
 #include "debugdraw.hh"
 
 enum AppState
@@ -21,7 +21,7 @@ static const char * g_volMeshFilename;
 static const char * g_triMeshFilename;
 static bool g_renderingEnabled = false;
 static PlyData * g_ply;
-static TriMesh * g_triMesh;
+static TriSoup * g_triMesh;
 static timespec g_lastTime;					// last time, used for calculating dt
 static int g_width, g_height;
 static float g_clipMeshScale = 1.f;
@@ -33,7 +33,6 @@ static int g_currentFaceVerts[3];
 static bool g_justShow = true;
 static float g_eyeDistTarget = 310.f;			
 static Vec3 g_centerTarget(0.f, 0.f, 0.f);		// camera center to lerp to
-static bool g_drawBoundary = false;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Command line setup
@@ -98,7 +97,7 @@ void CmdHelp(int, char**)
 ////////////////////////////////////////////////////////////////////////////////
 struct VolMesh;
 
-TriMesh * ReadMesh(const char* filename);
+TriSoup * ReadMesh(const char* filename);
 bool ReadMeshStep(PlyData& ply);
 VolMesh * ReadVolumeMesh(const char* filename);
 
@@ -136,7 +135,7 @@ int main(int argc, char **argv)
 //		printf("Failed to read volume mesh.\n");
 //		return 1;
 //	}
-	TriMesh * clipMesh = 0;
+	TriSoup * clipMesh = 0;
 	if(g_visualizeMode)
 	{
 		g_appState = APPSTATE_LOAD;
@@ -197,7 +196,7 @@ bool ReadMeshStep(PlyData& ply)
 {
 	if(!g_triMesh)
 	{
-		g_triMesh = new TriMesh();
+		g_triMesh = new TriSoup();
 
 		if(g_triMesh == 0)
 			return true;
@@ -246,15 +245,10 @@ bool ReadMeshStep(PlyData& ply)
 				if(!g_justShow)
 					return true;
 
-				if(g_triMesh->AddFace(v0, v1, v2) < 0)
-				{
-					printf("Failed to add face %d: %d %d %d\n", i, v0, v1, v2);
-				}
-				else
-				{
-					g_centerTarget = g_triMesh->GetVertexPos(g_currentFaceVerts[0]);
-					g_eyeDistTarget = 10.f;
-				}
+				g_triMesh->AddFace(v0, v1, v2);
+
+				g_centerTarget = g_triMesh->GetVertexPos(g_currentFaceVerts[0]);
+				g_eyeDistTarget = 10.f;
 			}
 			else printf("WARNING: primitive with %d verts not supported.\n", count);
 			++g_currentFace;
@@ -266,7 +260,7 @@ bool ReadMeshStep(PlyData& ply)
 	return false;
 }
 
-TriMesh* ReadMesh(const char* filename)
+TriSoup* ReadMesh(const char* filename)
 {
 	FILE* fp = fopen(filename, "rb");
 	
@@ -277,10 +271,10 @@ TriMesh* ReadMesh(const char* filename)
 	}
 
 	PlyData ply;
-	TriMesh * result = 0;
+	TriSoup* result = 0;
 	if(ply.Read(fp))
 	{
-		result = new TriMesh();
+		result = new TriSoup();
 		PlyData::ElementReader vertexReader = ply.GetElement("vertex");
 		if(vertexReader.Valid())
 		{
@@ -307,7 +301,6 @@ TriMesh* ReadMesh(const char* filename)
 			int idxId = faceReader.GetPropertyId("vertex_indices");
 			if(idxId >= 0)
 			{
-				int failedTris = 0;
 				for(int i = 0, c = faceReader.GetCount(); i < c; ++i)
 				{
 					int count = faceReader.GetListSize(idxId, i);
@@ -317,25 +310,14 @@ TriMesh* ReadMesh(const char* filename)
 						int v1 = faceReader.GetPropertyListValue<int>(idxId, i, 1);
 						int v2 = faceReader.GetPropertyListValue<int>(idxId, i, 2);
 
-						if(result->AddFace(v0, v1, v2) < 0)
-							++failedTris;
+						result->AddFace(v0, v1, v2);
 					}
 					else printf("WARNING: primitive with %d verts not supported.\n", count);
 
 				}
-				if(failedTris > 0)
-					printf("failed to create %d faces.\n", failedTris);
 			}
 			else printf("Couldn't find 'vertex_indices\n");
 		}
-	
-		printf("Cleaning boundaries...\n");
-		int removed = result->CleanBoundaries();
-		printf(" %d faces removed.\n", removed);
-
-		printf("Filling holes...\n");
-		int holesFilled = result->FillHoles();
-		printf(" %d holes filled.\n", holesFilled);
 	}
 	else
 	{
@@ -487,19 +469,7 @@ void OnDisplay(void)
 	glBegin(GL_TRIANGLES);
 	for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
 	{
-		int flags = g_triMesh->GetFaceFlags(i);
 		float r = 0.8f, g = 0.8f, b = 0.8f, a = 1.f;
-		if(flags & TriMesh::FACE_HOLE_FILLER)
-		{
-			r = 0.8f; g = 0.8f; b = 0.2f; a = 0.8f;
-		}
-		
-		if(g_showProblemFaces && (flags & TriMesh::FACE_NONMANIFOLD))
-		{
-			r = 0.8f; g = 0.4f; b = 0.4f; a = 0.8f;
-		}
-
-
 		glColor4f(r,g,b,a);
 
 		int verts[3];
@@ -518,18 +488,7 @@ void OnDisplay(void)
 	{
 		for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
 		{
-			int flags = g_triMesh->GetFaceFlags(i);
 			float r = 0.8f, g = 0.8f, b = 0.8f, a = 1.f;
-			if(flags & TriMesh::FACE_HOLE_FILLER)
-			{
-				r = 0.8f; g = 0.8f; b = 0.2f; a = 0.8f;
-			}
-			
-			if(g_showProblemFaces && (flags & TriMesh::FACE_NONMANIFOLD))
-			{
-				r = 0.8f; g = 0.4f; b = 0.4f; a = 0.8f;
-			}
-
 			glColor4f(r,g,b,a);
 			int verts[3];
 			g_triMesh->GetFace(i, verts);
@@ -567,33 +526,6 @@ void OnDisplay(void)
 		glEnable(GL_DEPTH_TEST);
 	}
 
-	if(g_drawBoundary)
-	{
-		glLineWidth(3.f);
-		glDisable(GL_LIGHTING);
-		glBegin(GL_LINES);
-		glColor3f(1, 0, 0);
-		for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
-		{
-
-			int verts[3];
-			g_triMesh->GetFace(i, verts);
-			for(int j = 0; j < 3; ++j)
-			{
-				if( g_triMesh->GetFaceNeighbor(i, j) < 0 )
-				{
-					const Vec3& pt0 = g_triMesh->GetVertexPos(verts[j]);
-					const Vec3& pt1 = g_triMesh->GetVertexPos(verts[(j+1)%3]);
-					glVertex3fv(&pt0.x);
-					glVertex3fv(&pt1.x);
-				}
-			}
-
-		}
-		glEnd();
-		glEnable(GL_LIGHTING);
-	}
-
 	RenderDebugDraw();
 	glutSwapBuffers();
 }
@@ -622,11 +554,6 @@ void OnKeyboard(unsigned char key, int x, int y)
 	else if(key == 's')
 	{
 		g_stepAllowed = true;
-	}
-	else if(key == 'b')
-	{
-		g_drawBoundary = !g_drawBoundary;
-		glutPostRedisplay();
 	}
 }
 
