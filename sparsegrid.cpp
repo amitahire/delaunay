@@ -8,6 +8,7 @@
 SparsePointGrid::SparsePointGrid(float gridDims, int cellsPerDim)
 	: m_allPoints(0)
 	, m_numPoints(0)
+	, m_pointsAABB()
 	, m_cells(0)
 	, m_cellDim(gridDims / cellsPerDim)
 	, m_cellsPerDim(cellsPerDim)

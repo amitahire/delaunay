@@ -6,7 +6,9 @@
 
 Triangulator::Triangulator(SparsePointGrid *grid)
 	: m_grid(grid)
+	, m_nodesTodo()
 	, m_bStarted(false)
+	, m_results()
 {
 }
 
@@ -292,6 +294,7 @@ void Triangulator::ContinueWall(SplitNode* node)
 TriangleHashList::TriangleHashList(int numBuckets)
 	: m_buckets(numBuckets, static_cast<HashValue*>(0))
 	, m_lastInserted(0)
+	, m_stats()
 {
 	memset(&m_stats, 0, sizeof(m_stats));
 }

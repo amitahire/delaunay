@@ -8,7 +8,7 @@
 // Global state 
 enum GenType
 {
-	GENTYPE_UNIFORM,
+	GENTYPE_UNIFORM
 };
 
 static GenType g_genType = GENTYPE_UNIFORM;
@@ -57,17 +57,17 @@ static CmdOption g_options[] =
 	{ &CmdHelp, "--help", "-h", 0, "Display help." },
 };
 
-void CmdSeed(int argc, char** argv)
+void CmdSeed(int, char** argv)
 {
 	g_seed = atoi(argv[1]);
 }
 
-void CmdNumPoints(int argc, char** argv)
+void CmdNumPoints(int, char** argv)
 {
 	g_numPoints = atoi(argv[1]);
 }
 
-void CmdRangeMinMax(int argc, char** argv)
+void CmdRangeMinMax(int, char** argv)
 {
 	g_rangeMinMax = atof(argv[1]);
 }
@@ -87,12 +87,12 @@ void CmdGenType(int argc, char** argv)
 	}
 }
 
-void CmdOutputFile(int argc, char **argv)
+void CmdOutputFile(int, char **argv)
 {
 	g_szOutputFile = argv[1];
 }
 
-void CmdHelp(int argc, char **argv)
+void CmdHelp(int, char **)
 {	
 	printf("Usage: makepoints [options]\n"
 	"options may be:\n\n");

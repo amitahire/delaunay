@@ -18,7 +18,7 @@ enum AppState
 {
 	STATE_Init,
 	STATE_Triangulating,
-	STATE_DisplayVolumeMesh,
+	STATE_DisplayVolumeMesh
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -139,20 +139,20 @@ void WriteVolumeMesh(const SparsePointGrid *grid, const Triangulator* triangulat
 	}
 
 	Vec3 tetPos[4];
-	for(int i = 0, c = s_triangulator->GetNumTetrahedrons(); i < c; ++i)
+	for(int i = 0, c = triangulator->GetNumTetrahedrons(); i < c; ++i)
 	{
-		const Triangulator::Tetrahedron& tet = s_triangulator->GetTetrahedron(i);
-		tetPos[0] = s_grid->GetPos(tet.v0);
-		tetPos[1] = s_grid->GetPos(tet.v1);
-		tetPos[2] = s_grid->GetPos(tet.v2);
-		tetPos[3] = s_grid->GetPos(tet.v3);
+		const Triangulator::Tetrahedron& tet = triangulator->GetTetrahedron(i);
+		tetPos[0] = grid->GetPos(tet.v0);
+		tetPos[1] = grid->GetPos(tet.v1);
+		tetPos[2] = grid->GetPos(tet.v2);
+		tetPos[3] = grid->GetPos(tet.v3);
 
 		for(int j = 0; j < 4; ++j)
 			fprintf(fp, "%f %f %f ", tetPos[j].x, tetPos[j].y, tetPos[j].z);
 		fprintf(fp, "\n");
 	}
 	fclose(fp);
-	printf("Wrote %d tetrahedrons to %s.\n", s_triangulator->GetNumTetrahedrons(), szMeshFile);
+	printf("Wrote %d tetrahedrons to %s.\n", triangulator->GetNumTetrahedrons(), szMeshFile);
 }
 
 void AddOuterPoints(std::vector<Vec3>& points, const AABB& aabb)
@@ -481,6 +481,7 @@ void OnDisplay(void)
 
 void OnKeyboard(unsigned char key, int x, int y)
 {
+	(void)x; (void)y;
 	if(key == ' ')
 	{
 		if(g_bAuto)
@@ -501,6 +502,7 @@ void OnKeyboard(unsigned char key, int x, int y)
 
 void OnSpecialKeyboard(int key, int x, int y)
 {
+	(void)x; (void)y;
 	if(key == GLUT_KEY_UP)
 	{
 		if(g_eyeDistTarget < 10.f)
@@ -572,13 +574,13 @@ void CmdSkip(int, char**)
 	g_bOneStep = true;
 }
 
-void CmdNumPoints(int argc, char** argv)
+void CmdNumPoints(int , char** argv)
 {
 	g_numPoints = Max(atoi(argv[1]), 3);
 	printf("Setting num points to %d\n", g_numPoints);
 }
 
-void CmdCellCount(int argc, char **argv)
+void CmdCellCount(int , char **argv)
 {
 	g_gridDims = Max(4, atoi(argv[1]));
 	printf("Setting Uniform grid to %dx%dx%d\n", g_gridDims, g_gridDims, g_gridDims);
@@ -589,12 +591,12 @@ void CmdPause(int, char **)
 	g_bPaused = true;
 }
 
-void CmdPoints(int argc, char** argv)
+void CmdPoints(int , char** argv)
 {
 	g_szPointFile = argv[1];
 }
 
-void CmdOutput(int argc, char** argv)
+void CmdOutput(int , char** argv)
 {
 	g_szMeshFile = argv[1];
 }
@@ -616,7 +618,7 @@ static CmdOption g_options[] =
 };
 
 bool g_bHelped = false;
-void CmdHelp(int argc, char **argv)
+void CmdHelp(int , char **)
 {	
 	printf("Usage: delaunay [options]\n"
 	"options may be:\n\n");

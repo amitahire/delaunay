@@ -87,6 +87,7 @@ PlyData::PlyPropertyBase * PlyData::AllocateProperty(const char * name,
 }
 
 PlyData::PlyData()
+	: m_elements()
 {
 }
 
@@ -171,12 +172,12 @@ bool PlyData::MatchHeader(FILE* fp)
 		}
 		else if(strcasecmp(token, "element") == 0)
 		{
-			if(!MatchElement(fp, cursor))
+			if(!MatchElement(cursor))
 				return false;
 		}
 		else if(strcasecmp(token, "property") == 0)
 		{
-			if(!MatchProperty(fp, cursor))
+			if(!MatchProperty(cursor))
 				return false;
 		}
 		else if(strcasecmp(token, "end_header") == 0)
@@ -239,7 +240,7 @@ bool PlyData::MatchFormat(const char* line)
 	return true;
 }
 
-bool PlyData::MatchElement(FILE* fp, const char *line)
+bool PlyData::MatchElement(const char *line)
 {
 	const char *cursor = line;
 	char token[64];
@@ -264,7 +265,7 @@ bool PlyData::MatchElement(FILE* fp, const char *line)
 
 }
 
-bool PlyData::MatchProperty(FILE* fp, const char *line)
+bool PlyData::MatchProperty(const char *line)
 {
 	PlyElement *element = m_elements.back();
 	const char* cursor = line;	

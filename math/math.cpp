@@ -237,3 +237,8 @@ bool AABBContains(const AABB& aabb, DVec3_arg pt)
 		(pt.z >= double(aabb.m_min.z) && pt.z <= double(aabb.m_max.z));
 }
 
+Vec3 ProjectN(Vec3_arg vec, Vec3_arg n)
+{
+	return vec - dot(vec, n) * n;
+}
+

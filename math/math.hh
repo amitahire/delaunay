@@ -9,7 +9,7 @@
 #define EPSILON_SQ (EPSILON * EPSILON)
 struct Plane
 {
-	Plane() {}
+	Plane() : m_normal(), m_d() {}
 	Plane(Vec3_arg normal, float d) : m_normal(normal), m_d(d) {}
 	Vec3 m_normal;
 	float m_d;
@@ -17,7 +17,7 @@ struct Plane
 
 struct DPlane
 {
-	DPlane() {}
+	DPlane() : m_normal(), m_d() {}
 	DPlane(DVec3_arg normal, double d) : m_normal(normal), m_d(d) {}
 	DVec3 m_normal;
 	double m_d;
@@ -26,7 +26,7 @@ struct DPlane
 enum TriPlaneIntersectType
 {
 	TRI_PLANE_INTERSECT_ALL_BELOW = 0x0,
-	TRI_PLANE_INTERSECT_ALL_ABOVE = 0x07,
+	TRI_PLANE_INTERSECT_ALL_ABOVE = 0x07
 };
 
 float DistToPlane(Vec3_arg p, const Plane& plane);
@@ -45,6 +45,7 @@ bool ComputeCircumcircle(Vec3_arg a, Vec3_arg b, Vec3_arg c, Vec3& outCenter, fl
 bool ComputeCircumsphere(Vec3_arg a, Vec3_arg b, Vec3_arg c, Vec3_arg d, Vec3 &outCenter, float &outRadiusSq);
 bool ComputeCircumsphere(DVec3_arg a, DVec3_arg b, DVec3_arg c, DVec3_arg d, DVec3 &outCenter, double &outRadiusSq);
 void PlaneIntersectsTriangleList(const Plane& plane, int numTriangles, const Vec3* triangleData, int *results);
+Vec3 ProjectN(Vec3_arg vec, Vec3_arg n);
 
 template<class T>
 inline T Clamp(T val, T min, T max)

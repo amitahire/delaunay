@@ -6,17 +6,31 @@
 #include "math/math.hh"
 #include "ply.hh"
 #include "cmdhelper.hh"
-#include "he_trimesh.hh"
+#include "trimesh.hh"
+#include "debugdraw.hh"
+
+enum AppState
+{
+	APPSTATE_LOAD,
+	APPSTATE_DISPLAY
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 // File Globals
 static const char * g_volMeshFilename;
 static const char * g_triMeshFilename;
 static bool g_renderingEnabled = false;
-static HETriMesh * g_triMesh;
+static PlyData * g_ply;
+static TriMesh * g_triMesh;
 static timespec g_lastTime;					// last time, used for calculating dt
 static int g_width, g_height;
 static float g_clipMeshScale = 1.f;
+static bool g_visualizeMode = false;
+static AppState g_appState = APPSTATE_DISPLAY;
+static bool g_stepAllowed = false;
+static int g_currentFace = -1;
+static int g_currentFaceVerts[3];
+static bool g_justShow = true;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Command line setup
@@ -25,6 +39,7 @@ void CmdTriMesh(int, char**);
 void CmdGraphics(int, char**);
 void CmdHelp(int, char**);
 void CmdScale(int, char**);
+void CmdVisMode(int, char**);
 
 static CmdOption g_options[] =
 {
@@ -32,15 +47,16 @@ static CmdOption g_options[] =
 	{ &CmdTriMesh, "--mesh", "-m", 1, "File containing the triangle mesh to clip against (PLY)." },
 	{ &CmdGraphics, "--graphics", "-g", 0, "Interactive render of results." },
 	{ &CmdScale, "--scale", "-s", 1, "Amount to scale clip mesh by." },
+	{ &CmdVisMode, "--vis", 0, 0, "Vis mode with stepping." },
 	{ &CmdHelp, "--help", "-h", 0, "Display help." },
 };
 
-void CmdVolMesh(int argc, char** argv)
+void CmdVolMesh(int, char** argv)
 {
 	g_volMeshFilename = argv[1];
 }
 
-void CmdTriMesh(int argc, char** argv)
+void CmdTriMesh(int, char** argv)
 {
 	g_triMeshFilename = argv[1];
 }
@@ -50,9 +66,15 @@ void CmdGraphics(int, char**)
 	g_renderingEnabled = true;
 }
 
-void CmdScale(int argc, char** argv)
+void CmdScale(int, char** argv)
 {
 	g_clipMeshScale = atof(argv[1]);
+}
+
+void CmdVisMode(int, char**)
+{
+	g_visualizeMode = true;
+	g_renderingEnabled = true;
 }
 
 void CmdHelp(int, char**)
@@ -73,7 +95,8 @@ void CmdHelp(int, char**)
 ////////////////////////////////////////////////////////////////////////////////
 struct VolMesh;
 
-HETriMesh * ReadMesh(const char* filename);
+TriMesh * ReadMesh(const char* filename);
+bool ReadMeshStep(PlyData& ply);
 VolMesh * ReadVolumeMesh(const char* filename);
 
 void SetupGL();
@@ -110,16 +133,38 @@ int main(int argc, char **argv)
 //		printf("Failed to read volume mesh.\n");
 //		return 1;
 //	}
-	HETriMesh * clipMesh = ReadMesh(g_triMeshFilename);
-	if(!clipMesh)
+	TriMesh * clipMesh = 0;
+	if(g_visualizeMode)
 	{
-		printf("Failed to read clipping mesh.\n");
-		return 1;
+		g_appState = APPSTATE_LOAD;
+		FILE* fp = fopen(g_triMeshFilename, "rb");
+		if(fp == 0)
+		{
+			printf("Failed to open file %s\n", g_triMeshFilename);
+			return 0;
+		}
+		g_ply = new PlyData();
+		if(!g_ply->Read(fp))
+		{
+			delete g_ply;
+			g_ply = 0;
+		}
+
+		fclose(fp);
+	}
+	else
+	{
+		clipMesh = ReadMesh(g_triMeshFilename);
+		if(!clipMesh)
+		{
+			printf("Failed to read clipping mesh.\n");
+			return 1;
+		}
+		g_triMesh = clipMesh;
 	}
 
 	if(g_renderingEnabled)
 	{
-		g_triMesh = clipMesh;
 		glutInit(&argc, argv);
 		glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 		glutCreateWindow(argv[0]);
@@ -145,7 +190,75 @@ int main(int argc, char **argv)
 	return 0;
 }
 
-HETriMesh* ReadMesh(const char* filename)
+bool ReadMeshStep(PlyData& ply)
+{
+	if(!g_triMesh)
+	{
+		g_triMesh = new TriMesh();
+
+		if(g_triMesh == 0)
+			return true;
+
+		PlyData::ElementReader vertexReader = ply.GetElement("vertex");
+		if(vertexReader.Valid())
+		{
+			int xId = vertexReader.GetPropertyId("x");
+			int yId = vertexReader.GetPropertyId("y");
+			int zId = vertexReader.GetPropertyId("z");
+			if(xId >= 0 && yId >= 0 && zId >= 0)
+			{
+				for(int i = 0, c = vertexReader.GetCount(); i < c; ++i)
+				{
+					float x = vertexReader.GetPropertyValue<float>(xId, i), 
+						  y = vertexReader.GetPropertyValue<float>(yId, i), 
+						  z = vertexReader.GetPropertyValue<float>(zId, i);
+
+					g_triMesh->AddVertex( g_clipMeshScale * Vec3(x,y,z) );
+				}
+			}
+			else printf("Couldn't find x y or z properties in vertex\n");
+		}
+
+		g_currentFace = 0;
+	}
+
+	PlyData::ElementReader faceReader = ply.GetElement("face");
+	if(faceReader.Valid() && g_currentFace < faceReader.GetCount())
+	{
+		int idxId = faceReader.GetPropertyId("vertex_indices");
+		if(idxId >= 0)
+		{
+			int i = g_currentFace;
+			int count = faceReader.GetListSize(idxId, i);
+			if(count == 3)
+			{
+				int v0 = faceReader.GetPropertyListValue<int>(idxId, i, 0);
+				int v1 = faceReader.GetPropertyListValue<int>(idxId, i, 1);
+				int v2 = faceReader.GetPropertyListValue<int>(idxId, i, 2);
+				int verts[] = { v0, v1, v2 };
+
+				memcpy(g_currentFaceVerts, verts, sizeof(int) * ARRAY_SIZE(g_currentFaceVerts));
+
+				g_justShow = !g_justShow;
+				if(!g_justShow)
+					return true;
+
+				if(g_triMesh->AddFace(v0, v1, v2) < 0)
+				{
+					printf("Failed to add face %d: %d %d %d\n", i, v0, v1, v2);
+				}
+			}
+			else printf("WARNING: primitive with %d verts not supported.\n", count);
+			++g_currentFace;
+			return g_currentFace < faceReader.GetCount() ;
+		}
+		else printf("Couldn't find 'vertex_indices\n");
+	}
+
+	return false;
+}
+
+TriMesh* ReadMesh(const char* filename)
 {
 	FILE* fp = fopen(filename, "rb");
 	
@@ -156,10 +269,10 @@ HETriMesh* ReadMesh(const char* filename)
 	}
 
 	PlyData ply;
-	HETriMesh * result = 0;
+	TriMesh * result = 0;
 	if(ply.Read(fp))
 	{
-		result = new HETriMesh(HETriMesh::OPT_INITPAYLOAD);
+		result = new TriMesh();
 		PlyData::ElementReader vertexReader = ply.GetElement("vertex");
 		if(vertexReader.Valid())
 		{
@@ -186,7 +299,7 @@ HETriMesh* ReadMesh(const char* filename)
 			int idxId = faceReader.GetPropertyId("vertex_indices");
 			if(idxId >= 0)
 			{
-				int totalFloatingTris = 0;
+				int failedTris = 0;
 				for(int i = 0, c = faceReader.GetCount(); i < c; ++i)
 				{
 					int count = faceReader.GetListSize(idxId, i);
@@ -198,35 +311,15 @@ HETriMesh* ReadMesh(const char* filename)
 
 						if(result->AddFace(v0, v1, v2) < 0)
 						{
-							const Vec3& pt0 = result->GetVertexPos(v0) ;
-							const Vec3& pt1 = result->GetVertexPos(v1) ;
-							const Vec3& pt2 = result->GetVertexPos(v2) ;
-
-							// create a floating triangle
-							v0 = result->AddVertex(pt0); 
-							v1 = result->AddVertex(pt1);
-							v2 = result->AddVertex(pt2);
-
-							int floatingIdx = result->AddFace(v0, v1, v2, sizeof(bool));
-							if(floatingIdx < 0)
-							{
-								printf("Failed to create floating triangle.\n");
-							}
-							else
-							{
-								char * data = result->GetFaceData(floatingIdx);
-								bool * boolData = reinterpret_cast<bool*>(data);
-								*boolData = true;
-
-								++totalFloatingTris;
-							}
+							printf("Failed to add face (%d: %d %d %d)\n", i, v0, v1, v2);
+							++failedTris;
 						}
 					}
 					else printf("WARNING: primitive with %d verts not supported.\n", count);
 
 				}
-				if(totalFloatingTris > 0)
-					printf("created %d floating faces.\n", totalFloatingTris);
+				if(failedTris > 0)
+					printf("failed to create %d faces.\n", failedTris);
 			}
 			else printf("Couldn't find 'vertex_indices\n");
 		}
@@ -240,7 +333,7 @@ HETriMesh* ReadMesh(const char* filename)
 	return result;
 }
 
-VolMesh * ReadVolumeMesh(const char* filename)
+VolMesh * ReadVolumeMesh(const char*)
 {
 	return 0;
 }
@@ -318,6 +411,30 @@ void OnIdle(void)
 			glutPostRedisplay();
 		}
 	}
+
+	switch(g_appState)
+	{
+	case APPSTATE_LOAD:
+		{
+			if(g_stepAllowed)
+			{
+				g_stepAllowed = false;
+				ClearDebugDraw();
+				if(g_ply == 0 || !ReadMeshStep(*g_ply))
+				{
+					ClearDebugDraw();
+					g_appState = AppState(int(g_appState) + 1);
+				}
+				glutPostRedisplay();
+			}
+		}
+		break;
+
+	case APPSTATE_DISPLAY:
+		break;
+	default:
+		break;
+	}
 }
 
 void OnReshape(int width, int height)
@@ -340,7 +457,10 @@ void OnDisplay(void)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	if(g_triMesh == 0)
+	{	
+		glutSwapBuffers();
 		return;
+	}
 
 	float cos_pitch = cos(g_pitch);
 	float eyeX = g_eyeDist * cos_pitch * cos(g_yaw);
@@ -399,11 +519,36 @@ void OnDisplay(void)
 
 	glEnd();
 	
+	if(g_appState == APPSTATE_LOAD && g_currentFace >= 0)
+	{
+		glLineWidth(3.f);
+		glDisable(GL_LIGHTING);
+		glDisable(GL_DEPTH_TEST);
+		glBegin(GL_LINES);
+		glColor4f(1, 0, 0, 0.2f);
+		for(int i = 0; i < (int)ARRAY_SIZE(g_currentFaceVerts); ++i)
+		{
+			int next = (i+1) % ARRAY_SIZE(g_currentFaceVerts);
+			const Vec3& pt0 = g_triMesh->GetVertexPos(g_currentFaceVerts[i]);
+			const Vec3& pt1 = g_triMesh->GetVertexPos(g_currentFaceVerts[next]);
+			glVertex3fv(&pt0.x);
+			glVertex3fv(&pt1.x);
+		}
+		glEnd();
+
+		g_centerTarget = g_triMesh->GetVertexPos(g_currentFaceVerts[0]);
+		g_eyeDistTarget = 10.f;
+		glEnable(GL_LIGHTING);
+		glEnable(GL_DEPTH_TEST);
+	}
+
+	RenderDebugDraw();
 	glutSwapBuffers();
 }
 
 void OnKeyboard(unsigned char key, int x, int y)
 {
+	(void)x; (void)y;
 	if(key == ' ')
 	{
 		g_showBackface = !g_showBackface;
@@ -422,10 +567,15 @@ void OnKeyboard(unsigned char key, int x, int y)
 		g_showFloatingFaces = !g_showFloatingFaces;
 		glutPostRedisplay();
 	}
+	else if(key == 's')
+	{
+		g_stepAllowed = true;
+	}
 }
 
 void OnSpecialKeyboard(int key, int x, int y)
 {
+	(void)x; (void)y;
 	if(key == GLUT_KEY_UP)
 	{
 		if(g_eyeDistTarget < 10.f)
@@ -507,10 +657,12 @@ void FindFloating(bool forward)
 	{
 		int verts[3];
 		g_triMesh->GetFace(g_currentFloating, verts);
-		const Vec3& pt0 = g_triMesh->GetVertexPos(verts[0]);
-		const Vec3& pt1 = g_triMesh->GetVertexPos(verts[1]);
-		const Vec3& pt2 = g_triMesh->GetVertexPos(verts[2]);
-		g_centerTarget = (1.f/3.f) * (pt0 + pt1 + pt2);
+		float factor = 1.f / 3.f;
+		g_centerTarget = Vec3(0,0,0);
+		for(int i = 0; i < 3; ++i)
+		{
+			g_centerTarget += factor * g_triMesh->GetVertexPos(verts[i]);
+		}	
 	}
 }
 

@@ -16,12 +16,12 @@ enum PlyDataType
 	PLYDATATYPE_DOUBLE,
 	PLYDATATYPE_LIST,
 
-	PLYDATATYPE_NUM,
+	PLYDATATYPE_NUM
 };
 
 template< PlyDataType Val > struct PlyDataEnumToType {};
 #define DEFINEPLYTYPE(enumval, tp) \
-template<> struct PlyDataEnumToType<enumval> { typedef tp Type; };
+template<> struct PlyDataEnumToType<enumval> { typedef tp Type; }
 
 DEFINEPLYTYPE(PLYDATATYPE_CHAR, char);
 DEFINEPLYTYPE(PLYDATATYPE_SHORT, short);
@@ -76,7 +76,7 @@ class PlyData
 		T GetListValue(int listId, int index) const;
 		
 		virtual int GetCount() const { return 0; }
-		virtual int GetListSize(int listIndex) const { return 0; }
+		virtual int GetListSize(int listIndex) const { (void)listIndex; return 0; }
 	protected:
 		template<class ClassValueType, class T>
 		static bool ValidateType(const T& value)
@@ -102,8 +102,8 @@ class PlyData
 			return true;
 		}
 
-		virtual PlyDataValue GetValueRaw(int index) const { return PlyDataValue(); }
-		virtual PlyDataValue GetListValueRaw(int listIndex, int itemIndex) const { return PlyDataValue(); }
+		virtual PlyDataValue GetValueRaw(int index) const { (void)index; return PlyDataValue(); }
+		virtual PlyDataValue GetListValueRaw(int listIndex, int itemIndex) const { (void)listIndex; (void)itemIndex; return PlyDataValue(); }
 	};
 
 	template<class T>
@@ -111,7 +111,7 @@ class PlyData
 	{
 		std::vector<T> m_values;
 	public:
-		PlyProperty(const char *name, PlyDataType type) : PlyPropertyBase(name, type) {}
+		PlyProperty(const char *name, PlyDataType type) : PlyPropertyBase(name, type), m_values() {}
 		virtual bool Parse(const char* line, char *& next) 
 		{
 			if(GetType() < PLYDATATYPE_FLOAT)
@@ -149,7 +149,7 @@ class PlyData
 		std::vector< std::vector<T>* > m_values;
 		PlyDataType m_listType;
 	public:
-		PlyListProperty(const char* name, PlyDataType type, PlyDataType m_listType) : PlyPropertyBase(name, type) {}
+		PlyListProperty(const char* name, PlyDataType type, PlyDataType listType) : PlyPropertyBase(name, type), m_values(), m_listType(listType) {}
 		~PlyListProperty() {
 			for(int i = 0, c = m_values.size(); i < c; ++i)
 				delete m_values[i];
@@ -215,6 +215,7 @@ class PlyData
 		PlyElement(const char* name, int size) 
 			: m_name(name)
 			, m_count(size)
+			, m_properties()
 		{
 			m_properties.reserve(size);
 		}
@@ -292,8 +293,8 @@ private:
 
 	bool MatchHeader(FILE* fp);
 	bool MatchFormat(const char* line);
-	bool MatchElement(FILE* fp, const char* line);
-	bool MatchProperty(FILE* fp, const char* line);
+	bool MatchElement(const char* line);
+	bool MatchProperty(const char* line);
 	bool MatchData(FILE* fp);
 };
 

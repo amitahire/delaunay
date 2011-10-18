@@ -15,7 +15,7 @@ class Vec3
 public:
 	float x,y,z;
 
-	inline Vec3() {}
+	inline Vec3() : x(), y(), z() {}
 	inline Vec3(float x, float y, float z) : x(x),y(y),z(z) {}
 	Vec3(const DVec3_arg other);
 	inline Vec3(Vec3_arg other) : x(other.x),y(other.y),z(other.z) {}
@@ -199,7 +199,7 @@ class DVec3
 public:
 	double x,y,z;
 
-	inline DVec3() {}
+	inline DVec3() : x(), y(), z() {}
 	inline DVec3(double x, double y, double z) : x(x),y(y),z(z) {}
 	inline DVec3(DVec3_arg other) : x(other.x),y(other.y),z(other.z) {}
 	inline DVec3(Vec3_arg other) : x(other.x),y(other.y),z(other.z) {}

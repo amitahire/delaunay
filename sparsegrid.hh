@@ -5,7 +5,7 @@
 class SparsePointGrid
 {
 	struct PointData {
-		PointData() {}
+		PointData() : m_pos(), m_faceCount(-1) {}
 		PointData(Vec3_arg pos) : m_pos(pos), m_faceCount(-1) {}
 		Vec3 m_pos;
 		int m_faceCount;	// -1: not used yet, 0: deleted, > 0: valid for searching
@@ -38,13 +38,13 @@ public:
 	{
 		SPLITDIR_X = 0,
 		SPLITDIR_Y,
-		SPLITDIR_Z,
+		SPLITDIR_Z
 	};
 
 	enum ConstraintFlags
 	{
 		CONSTRAINT_POINT_ABOVE = (1 << 0),
-		CONSTRAINT_DELAUNAY = (1 << 1),
+		CONSTRAINT_DELAUNAY = (1 << 1)
 	};
 
 	SparsePointGrid(float gridDims, int cellsPerDim);
@@ -66,6 +66,8 @@ public:
 
 	const AABB& GetAllPointsAABB() const { return m_pointsAABB; }
 private:
+	SparsePointGrid(const SparsePointGrid&);
+	SparsePointGrid& operator=(const SparsePointGrid&);
 	void Clear();
 
 	void ToGrid(Vec3_arg v, int &ix, int &iy, int &iz);
@@ -77,5 +79,7 @@ private:
 		int& closestPointIndex, float &closestPointDist);
 	void FindClosestPointInCellAbovePlane(const Cell* cell, Vec3_arg fromPos, const Plane& plane,
 		float fromPlaneDist, int& closestPointIndex, float &closestPointDistSq);
+
+	
 };
 

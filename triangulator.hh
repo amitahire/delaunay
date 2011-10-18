@@ -40,6 +40,9 @@ public:
 
 	void DebugDrawFaces(const SparsePointGrid * grid);
 private:
+
+	TriangleHashList(const TriangleHashList&);
+	TriangleHashList& operator=(const TriangleHashList&);
 	bool RemoveFromBuckets(int v0, int v1, int v2);
 	bool RemoveFromBuckets(int idx, int v0, int v1, int v2);
 };
@@ -69,6 +72,9 @@ private:
 		AABB m_bounds;
 		TriangleHashList m_activeFaces;
 		SplitNode* m_children[2];
+	private:
+		SplitNode(const SplitNode&);
+		SplitNode& operator=(const SplitNode&);
 	};
 
 	SparsePointGrid* m_grid;
@@ -86,6 +92,8 @@ public:
 	const Tetrahedron& GetTetrahedron(int idx) const { return m_results[idx]; }
 
 private:
+	Triangulator(const Triangulator&);
+	Triangulator& operator=(const Triangulator&);
 	void StartWall(SplitNode* node);
 	void ContinueWall(SplitNode* node);
 	void AddSimplex(SplitNode* node, const Plane& plane, int v0, int v1, int v2, int v3);
