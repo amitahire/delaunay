@@ -12,6 +12,12 @@ class TriMesh
 {
 public:
 	////////////////////////////////////////////////////////////////////////////////	
+	enum FaceFlags
+	{
+		FACE_NONMANIFOLD = (1 << 0)
+	};
+
+	////////////////////////////////////////////////////////////////////////////////	
 	TriMesh();
 	~TriMesh();
 	TriMesh(const TriMesh& other);
@@ -26,6 +32,8 @@ public:
 
 	// Modification Functions
 	void DeleteFace(int index);
+	int RemoveProblemTriangles();
+	int FillHoles();
 
 	// Accessor Functions
 	const Vec3& GetVertexPos(int vertex) const;
@@ -38,6 +46,15 @@ public:
 	const char * GetVertexData(int index) const ;
 	char * GetFaceData(int index) ;
 	const char * GetFaceData(int index) const ;
+	int GetFaceFlags(int faceIndex) const;
+
+	// Traversal functions
+	int GetNeighborFaceIndex(int face, int neighborFace) const;	// returns 0..2, -1 on error
+	int GetVertexNumInFace(int face, int vertexIdx) const; // returns 0..2, -1 on error
+	int GetVertexValency(int vertex) const; 
+	bool GetOneRing(int vertexIndex, int* ring, int max) const ;
+	int GetNextFace(int faceIdx, int vertexFrom) const;
+	int GetPrevFace(int faceIdx, int vertexFrom) const;
 private:
 	
 	////////////////////////////////////////////////////////////////////////////////	
@@ -60,8 +77,9 @@ private:
 	////////////////////////////////////////////////////////////////////////////////	
 	int AllocateVertex();
 	int AllocateFace();
-	void DeleteLastFace();
 	bool AddEdge(int start, int end);
+	void AttemptCreateEdges(int faceIdx, bool &nonManifold, bool &wrongFacing);
+	void MoveFace(int destIndex, int srcIndex);
 
 	////////////////////////////////////////////////////////////////////////////////	
 	std::set<Edge> m_edges;

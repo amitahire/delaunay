@@ -31,6 +31,8 @@ static bool g_stepAllowed = false;
 static int g_currentFace = -1;
 static int g_currentFaceVerts[3];
 static bool g_justShow = true;
+static float g_eyeDistTarget = 310.f;			
+static Vec3 g_centerTarget(0.f, 0.f, 0.f);		// camera center to lerp to
 
 ////////////////////////////////////////////////////////////////////////////////
 // Command line setup
@@ -247,6 +249,11 @@ bool ReadMeshStep(PlyData& ply)
 				{
 					printf("Failed to add face %d: %d %d %d\n", i, v0, v1, v2);
 				}
+				else
+				{
+					g_centerTarget = g_triMesh->GetVertexPos(g_currentFaceVerts[0]);
+					g_eyeDistTarget = 10.f;
+				}
 			}
 			else printf("WARNING: primitive with %d verts not supported.\n", count);
 			++g_currentFace;
@@ -310,10 +317,7 @@ TriMesh* ReadMesh(const char* filename)
 						int v2 = faceReader.GetPropertyListValue<int>(idxId, i, 2);
 
 						if(result->AddFace(v0, v1, v2) < 0)
-						{
-							printf("Failed to add face (%d: %d %d %d)\n", i, v0, v1, v2);
 							++failedTris;
-						}
 					}
 					else printf("WARNING: primitive with %d verts not supported.\n", count);
 
@@ -323,12 +327,17 @@ TriMesh* ReadMesh(const char* filename)
 			}
 			else printf("Couldn't find 'vertex_indices\n");
 		}
+	
+		printf("Removing triangles near manifold issues...\n");
+		int removed = result->RemoveProblemTriangles();
+		printf(" %d removed.\n", removed);
 	}
 	else
 	{
 		printf("failed to parse %s as PLY file\n", filename);
 	}
 	fclose(fp);
+
 
 	return result;
 }
@@ -343,12 +352,10 @@ VolMesh * ReadVolumeMesh(const char*)
 static float g_eyeDist = 310.f, 				// Camera parameters.
 	g_pitch = M_PI / 4.f, 
 	g_yaw = M_PI / 4.f;
-static float g_eyeDistTarget = 310.f;			
 static Vec3 g_center(0,0,0);
-static Vec3 g_centerTarget(0.f, 0.f, 0.f);		// camera center to lerp to
 static int g_lastx = -1, g_lasty = -1;
 static bool g_showBackface = true;
-static bool g_showFloatingFaces = false;
+static bool g_showProblemFaces = false;
 static int g_currentFloating = -1;
 
 void SetupGL()
@@ -475,9 +482,8 @@ void OnDisplay(void)
 	glBegin(GL_TRIANGLES);
 	for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
 	{
-		const char * data = g_triMesh->GetFaceData(i);
-		const bool * boolData = reinterpret_cast<const bool*>(data);
-		if(!g_showFloatingFaces || boolData == 0 || *boolData == false)
+		int flags = g_triMesh->GetFaceFlags(i);
+		if(!g_showProblemFaces || !(flags & TriMesh::FACE_NONMANIFOLD))
 			glColor4f(0.8f, 0.8f, 0.8f, 1.f);
 		else
 			glColor4f(0.8f, 0.4f, 0.4f, 0.8f);
@@ -498,9 +504,8 @@ void OnDisplay(void)
 	{
 		for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
 		{
-			const char * data = g_triMesh->GetFaceData(i);
-			const bool * boolData = reinterpret_cast<const bool*>(data);
-			if(!g_showFloatingFaces || boolData == 0 || *boolData == false)
+			int flags = g_triMesh->GetFaceFlags(i);
+			if(!g_showProblemFaces || !(flags & TriMesh::FACE_NONMANIFOLD))
 				glColor4f(0.8f, 0.8f, 0.8f, 1.f);
 			else
 				glColor4f(0.8f, 0.4f, 0.4f, 0.8f);
@@ -536,8 +541,6 @@ void OnDisplay(void)
 		}
 		glEnd();
 
-		g_centerTarget = g_triMesh->GetVertexPos(g_currentFaceVerts[0]);
-		g_eyeDistTarget = 10.f;
 		glEnable(GL_LIGHTING);
 		glEnable(GL_DEPTH_TEST);
 	}
@@ -564,7 +567,7 @@ void OnKeyboard(unsigned char key, int x, int y)
 	}
 	else if(key == 'f')
 	{
-		g_showFloatingFaces = !g_showFloatingFaces;
+		g_showProblemFaces = !g_showProblemFaces;
 		glutPostRedisplay();
 	}
 	else if(key == 's')
