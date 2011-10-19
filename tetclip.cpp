@@ -8,6 +8,7 @@
 #include "cmdhelper.hh"
 #include "trisoup.hh"
 #include "debugdraw.hh"
+#include "sgndist.hh"
 
 enum AppState
 {
@@ -33,6 +34,7 @@ static int g_currentFaceVerts[3];
 static bool g_justShow = true;
 static float g_eyeDistTarget = 310.f;			
 static Vec3 g_centerTarget(0.f, 0.f, 0.f);		// camera center to lerp to
+static SignedDistanceField* g_distField;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Command line setup
@@ -163,6 +165,7 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		g_triMesh = clipMesh;
+		g_distField = new SignedDistanceField(*g_triMesh, 0.5f);
 	}
 
 	if(g_renderingEnabled)

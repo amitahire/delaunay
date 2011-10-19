@@ -17,15 +17,15 @@ struct PtrPolicy<T, true>
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-// ScopedPtr
+// ScopedPtrImpl
 template<class T, bool IsArray = false>
-class ScopedPtr
+class ScopedPtrImpl
 {
 protected:
 	mutable T* m_ptr;
 public:
-	ScopedPtr(T* ptr = 0) : m_ptr(ptr) {}
-	~ScopedPtr() { PtrPolicy<T, IsArray>::Delete(m_ptr); }
+	ScopedPtrImpl(T* ptr = 0) : m_ptr(ptr) {}
+	~ScopedPtrImpl() { PtrPolicy<T, IsArray>::Delete(m_ptr); }
 
 	operator T* () { return m_ptr; }
 	operator const T* () const { return m_ptr; }
@@ -43,13 +43,13 @@ public:
 	const T& operator[](int idx) const {
 		return PtrPolicy<T, IsArray>::At(m_ptr, idx);
 	}
-	ScopedPtr& operator=(T* ptr);
-	ScopedPtr& operator=(const ScopedPtr& other);
-	ScopedPtr(const ScopedPtr&);
+	ScopedPtrImpl& operator=(T* ptr);
+	ScopedPtrImpl& operator=(const ScopedPtrImpl& other);
+	ScopedPtrImpl(const ScopedPtrImpl&);
 };
 
 template<class T, bool IsArray>
-ScopedPtr<T, IsArray>& ScopedPtr<T, IsArray>::operator=(T* ptr)
+ScopedPtrImpl<T, IsArray>& ScopedPtrImpl<T, IsArray>::operator=(T* ptr)
 {
 	if(ptr != m_ptr)
 	{
@@ -60,7 +60,7 @@ ScopedPtr<T, IsArray>& ScopedPtr<T, IsArray>::operator=(T* ptr)
 }
 
 template<class T, bool IsArray>
-ScopedPtr<T, IsArray>& ScopedPtr<T, IsArray>::operator=(const ScopedPtr& other)
+ScopedPtrImpl<T, IsArray>& ScopedPtrImpl<T, IsArray>::operator=(const ScopedPtrImpl& other)
 {
 	ASSERT(m_ptr != other.m_ptr); // If this fires, then the object is probably going to be deleted twice anyways
 	PtrPolicy<T, IsArray>::Delete(m_ptr);
@@ -69,11 +69,18 @@ ScopedPtr<T, IsArray>& ScopedPtr<T, IsArray>::operator=(const ScopedPtr& other)
 }
 
 template<class T, bool IsArray>
-ScopedPtr<T, IsArray>::ScopedPtr(const ScopedPtr<T, IsArray> & other) : m_ptr(0)
+ScopedPtrImpl<T, IsArray>::ScopedPtrImpl(const ScopedPtrImpl<T, IsArray> & other) : m_ptr(0)
 {
 	m_ptr = other.m_ptr;
 	other.m_ptr = 0;
 }
+////////////////////////////////////////////////////////////////////////////////
+// ScopedPtr
+template< class T>
+struct ScopedPtr
+{
+	typedef ScopedPtrImpl<T, false> Type;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 // ScopedPtrAry
@@ -81,6 +88,6 @@ ScopedPtr<T, IsArray>::ScopedPtr(const ScopedPtr<T, IsArray> & other) : m_ptr(0)
 template< class T >
 struct ScopedPtrAry
 {
-	typedef ScopedPtr<T, true> Type;
+	typedef ScopedPtrImpl<T, true> Type;
 };
 

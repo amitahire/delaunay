@@ -1,5 +1,4 @@
-#ifndef INCLUDED_math_allmath_HH
-#define INCLUDED_math_allmath_HH
+#pragma once
 
 #include "math/vec3.hh"
 #include "math/mat4.hh"
@@ -87,5 +86,4 @@ inline float AngleWrap(float angle)
 	return angle;
 }
 
-#endif
 
