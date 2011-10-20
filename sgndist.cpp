@@ -2,9 +2,12 @@
 #include "sgndist.hh"
 #include "trisoup.hh"
 #include "math/vec3.hh"
+#include "debugdraw.hh"
 #include <climits>
 
-static const int kVoxelGroupDim = 4;
+#undef SGNDIST_EXTRA_DEBUG
+
+static const int kVoxelGroupDim = 2;
 static const int kVoxelGroupDataLen = kVoxelGroupDim * kVoxelGroupDim * kVoxelGroupDim;
 static const int kSmallestAllocationDim = 16;  // Oct tree will contain cubes of this dimension.
 
@@ -84,7 +87,6 @@ SignedDistanceField::SignedDistanceField(const TriSoup& triSoup, float resolutio
 	, m_bounds()
 	, m_gridBoundsMin()
 	, m_gridBoundsMax()
-	, m_dims()
 	, m_resolution(resolution)
 	, m_invResolution(1.f / resolution)
 	//, m_blocks()
@@ -96,33 +98,22 @@ SignedDistanceField::SignedDistanceField(const TriSoup& triSoup, float resolutio
 	for(int i = 0; i < 3; ++i)
 	{
 		m_gridBoundsMin[i] = int(floorf(m_bounds.m_min[i] / resolution));
-		m_gridBoundsMax[i] = int(floorf(m_bounds.m_max[i] / resolution));
+		m_gridBoundsMax[i] = int(ceilf(m_bounds.m_max[i] / resolution));
 	}
-
-	Vec3 diff = m_bounds.m_max - m_bounds.m_min;
-	for(int i = 0; i < 3; ++i)
-		m_dims[i] = Max(1, int(ceilf(diff[i]/resolution)));
 
 	m_root = new VoxelOctNode();
 	for(int i = 0; i < 3; ++i)
 	{
 		// align voxel root bounds to kSmallestAllocationDim.
-		m_root->m_minBounds[i] = int(floorf(m_gridBoundsMin[i] / kSmallestAllocationDim) * kSmallestAllocationDim);
-		m_root->m_maxBounds[i] = int(ceilf(m_gridBoundsMax[i] / kSmallestAllocationDim) * kSmallestAllocationDim);
+		m_root->m_minBounds[i] = floorf(m_gridBoundsMin[i] / float(kSmallestAllocationDim)) * kSmallestAllocationDim;
+		m_root->m_maxBounds[i] = floorf((m_gridBoundsMax[i] + kSmallestAllocationDim - 1) / float(kSmallestAllocationDim)) *
+			kSmallestAllocationDim;
 	}
 	if( (m_root->m_maxBounds[0] - m_root->m_minBounds[0] <= kSmallestAllocationDim) && 
 			(m_root->m_maxBounds[1] - m_root->m_minBounds[1] <= kSmallestAllocationDim) &&
 			(m_root->m_maxBounds[2] - m_root->m_minBounds[2] <= kSmallestAllocationDim))
-		m_root->m_leaf = new VoxelLeafBlock;
-
-	for(int i = 0, c = triSoup.NumFaces(); i < c; ++i)
 	{
-		int indices[3];
-		triSoup.GetFace(i, indices);
-		Vec3 verts[3];
-		for(int j = 0; j < 3; ++j)
-			verts[j] = triSoup.GetVertexPos(indices[j]);
-		ComputeTriangleDistances(i, verts);
+		m_root->m_leaf = new VoxelLeafBlock;
 	}
 }
 
@@ -131,6 +122,29 @@ SignedDistanceField::~SignedDistanceField()
 	//for(int i = 0, c = m_blocks.size(); i < c; ++i)
 		//delete m_blocks[i];
 	delete m_root;
+}
+
+void SignedDistanceField::Compute()
+{
+	for(int i = 0, c = m_triSoup->NumFaces(); i < c; ++i)
+	{
+		ComputeTri(i);
+	}
+}
+
+void SignedDistanceField::ComputeTri(int i)
+{
+	int indices[3];
+	m_triSoup->GetFace(i, indices);
+	Vec3 verts[3];
+	for(int j = 0; j < 3; ++j)
+		verts[j] = m_triSoup->GetVertexPos(indices[j]);
+	ComputeTriangleDistances(i, verts);
+}
+
+int SignedDistanceField::NumTris() const
+{
+	return m_triSoup->NumFaces();
 }
 	
 SignedDistanceField::Iterator SignedDistanceField::GetFirst() 
@@ -150,15 +164,31 @@ SignedDistanceField::VoxelGroup* SignedDistanceField::FindVoxelGroup(int ix, int
 	}
 	else
 	{
-		if(ix < curNode->m_minBounds[0] || ix >= curNode->m_maxBounds[0] ||
-				iy < curNode->m_minBounds[1] || iy >= curNode->m_maxBounds[1] ||
-				iz < curNode->m_minBounds[2] || iz >= curNode->m_maxBounds[2])
+		if(ix < m_root->m_minBounds[0] || ix >= m_root->m_maxBounds[0] ||
+				iy < m_root->m_minBounds[1] || iy >= m_root->m_maxBounds[1] ||
+				iz < m_root->m_minBounds[2] || iz >= m_root->m_maxBounds[2])
 			return 0;
 	}
 
 	VoxelGroup *grp = 0;
 	while(true)
 	{
+
+#ifdef SGNDIST_EXTRA_DEBUG
+		{
+			AABB bounds;
+			bounds.Extend(CellCenterFromGridCoords(
+						curNode->m_minBounds[0],
+						curNode->m_minBounds[1],			
+						curNode->m_minBounds[2]));
+			bounds.Extend(CellCenterFromGridCoords(
+						curNode->m_maxBounds[0],
+						curNode->m_maxBounds[1],			
+						curNode->m_maxBounds[2]));
+			DebugDrawAABB(bounds);
+		}
+#endif
+
 		ASSERT(ix >= curNode->m_minBounds[0] && ix < curNode->m_maxBounds[0] &&
 			iy >= curNode->m_minBounds[1] && iy < curNode->m_maxBounds[1] &&
 			iz >= curNode->m_minBounds[2] && iz < curNode->m_maxBounds[2]);
@@ -184,30 +214,48 @@ SignedDistanceField::VoxelGroup* SignedDistanceField::FindVoxelGroup(int ix, int
 		}
 		else
 		{
-			int xHalf = (((curNode->m_maxBounds[0] + curNode->m_minBounds[0]) >> 1) / kSmallestAllocationDim) * 
-				kSmallestAllocationDim;
-			int yHalf = (((curNode->m_maxBounds[1] + curNode->m_minBounds[1]) >> 1) / kSmallestAllocationDim) * 
-				kSmallestAllocationDim;
-			int zHalf = (((curNode->m_maxBounds[2] + curNode->m_minBounds[2]) >> 1) / kSmallestAllocationDim) * 
-				kSmallestAllocationDim;
-			int childIndex = (int(iz >= zHalf) << 2) + (int(iy >= yHalf) << 1) + int(ix >= xHalf);
-			ASSERT(childIndex >= 0 && childIndex < 8);
+			int xHalf = (curNode->m_maxBounds[0] + curNode->m_minBounds[0]) >> 1;
+			int yHalf = (curNode->m_maxBounds[1] + curNode->m_minBounds[1]) >> 1;
+			int zHalf = (curNode->m_maxBounds[2] + curNode->m_minBounds[2]) >> 1;
+
+			xHalf = floorf((xHalf + kSmallestAllocationDim - 1) / float(kSmallestAllocationDim)) * kSmallestAllocationDim;
+			yHalf = floorf((yHalf + kSmallestAllocationDim - 1) / float(kSmallestAllocationDim)) * kSmallestAllocationDim;
+			zHalf = floorf((zHalf + kSmallestAllocationDim - 1) / float(kSmallestAllocationDim)) * kSmallestAllocationDim;
+
+			unsigned int xSide = (ix >= xHalf) ? 1 : 0;
+			unsigned int ySide = (iy >= yHalf) ? 1 : 0;
+			unsigned int zSide = (iz >= zHalf) ? 1 : 0;
+			unsigned childIndex = (zSide << 2) + (ySide << 1) + xSide;
+			ASSERT(childIndex < 8);
 
 			if(!curNode->m_children[childIndex])
 			{
 				VoxelOctNode* node = new VoxelOctNode;
 				node->m_parent = curNode;
-				node->m_minBounds[0] = ix >= xHalf ? xHalf : curNode->m_minBounds[0];
-				node->m_maxBounds[0] = ix >= xHalf ? curNode->m_maxBounds[0] : xHalf;
-				node->m_minBounds[1] = iy >= yHalf ? yHalf : curNode->m_minBounds[1];
-				node->m_maxBounds[1] = iy >= yHalf ? curNode->m_maxBounds[1] : yHalf;
-				node->m_minBounds[2] = iz >= zHalf ? zHalf : curNode->m_minBounds[2];
-				node->m_maxBounds[2] = iz >= zHalf ? curNode->m_maxBounds[2] : zHalf;
+				int minX[] = { curNode->m_minBounds[0], xHalf };
+				int minY[] = { curNode->m_minBounds[1], yHalf };
+				int minZ[] = { curNode->m_minBounds[2], zHalf };
+				int maxX[] = { xHalf, curNode->m_maxBounds[0] };
+				int maxY[] = { yHalf, curNode->m_maxBounds[1] };
+				int maxZ[] = { zHalf, curNode->m_maxBounds[2] };
+				node->m_minBounds[0] = minX[xSide];
+				node->m_maxBounds[0] = maxX[xSide];
+				node->m_minBounds[1] = minY[ySide];
+				node->m_maxBounds[1] = maxY[ySide];
+				node->m_minBounds[2] = minZ[zSide];
+				node->m_maxBounds[2] = maxZ[zSide];
+
+				ASSERT(node->m_minBounds[0] != node->m_maxBounds[0]);
+				ASSERT(node->m_minBounds[1] != node->m_maxBounds[1]);
+				ASSERT(node->m_minBounds[2] != node->m_maxBounds[2]);
 
 				if(node->m_maxBounds[0] - node->m_minBounds[0] <= kSmallestAllocationDim &&
 					node->m_maxBounds[1] - node->m_minBounds[1] <= kSmallestAllocationDim &&
 					node->m_maxBounds[2] - node->m_minBounds[2] <= kSmallestAllocationDim)
+				{
+
 					node->m_leaf = new VoxelLeafBlock;
+				}
 				
 				curNode->m_children[childIndex] = node;
 			}
@@ -215,6 +263,13 @@ SignedDistanceField::VoxelGroup* SignedDistanceField::FindVoxelGroup(int ix, int
 		}
 	}
 	return grp;
+}
+
+const AABB SignedDistanceField::GetAlignedBounds() const
+{
+	return AABB(
+		CellCenterFromGridCoords(m_gridBoundsMin[0], m_gridBoundsMin[1], m_gridBoundsMin[2]),
+		CellCenterFromGridCoords(m_gridBoundsMax[0], m_gridBoundsMax[1], m_gridBoundsMax[2]));
 }
 
 void SignedDistanceField::GridCoordsFromVec(Vec3_arg pos, int& ix, int& iy, int &iz) const
@@ -237,7 +292,7 @@ Vec3 SignedDistanceField::CellCenterFromGridCoords(int ix, int iy, int iz) const
 void SignedDistanceField::ComputeTriangleDistances(int tri, const Vec3 (&verts)[3])
 {
 	const float resolution = m_resolution;
-	const float obbSize = resolution * 10;
+	const float obbSize = resolution * 5.5;
 
 	// Setup planes for fast iteration.
 	float w = 1/3.f;
@@ -269,9 +324,14 @@ void SignedDistanceField::ComputeTriangleDistances(int tri, const Vec3 (&verts)[
 	distances[2] = obbSize;
 
 	// Determine what axis aligned bounds to iterate over
+	OBB boundsOBB(center, norm[0] * distances[0], norm[1] * distances[1], norm[2] * distances[2]);
 	AABB bounds;
-	bounds.Extend(center + norm[0] * distances[0] + norm[1] * distances[1] + norm[2] * distances[2]);
-	bounds.Extend(center - norm[0] * distances[0] - norm[1] * distances[1] - norm[2] * distances[2]);
+	bounds.Extend(boundsOBB);
+
+#ifdef DEBUG 
+	DebugDrawOBB(boundsOBB);
+	DebugDrawAABB(bounds);
+#endif
 
 	int ix, iy, iz;
 	GridCoordsFromVec(bounds.m_min, ix, iy, iz);
@@ -296,26 +356,26 @@ void SignedDistanceField::ComputeTriangleDistances(int tri, const Vec3 (&verts)[
 	}
 
 	// And start the compute.
-	float curPlanes[3];
-
 	VoxelOctNode* cache = 0;
 	for(int curZ = iz; curZ <= endZ; curZ += kVoxelGroupDim)
 	{
 		int offZ = curZ - iz;
 		for(int curY = iy; curY <= endY; curY += kVoxelGroupDim)
 		{
+			float curPlanes[3];
 			int offY = curY - iy;
 			for(int i = 0; i < 3; ++i)
 				curPlanes[i] = planeStart[i] + offZ * planeIncZ[i] + offY * planeIncY[i];
 		
 			for(int curX = ix; curX <= endX; curX += kVoxelGroupDim)
 			{
-				VoxelGroup* grp = FindVoxelGroup(ix, iy, iz, cache);
+				VoxelGroup* grp = FindVoxelGroup(curX, curY, curZ, cache);
 				if(grp)
 				{
 					SplatVoxelGroup(
 							grp,
-							ix, iy, iz, tri, 
+							curX, curY, curZ,
+							tri, 
 							verts, diffs,  
 							curPlanes, 
 							planeIncX,
@@ -449,6 +509,9 @@ void SignedDistanceField::SplatVoxelGroup(
 
 				if(dist < grp->m_dist[voxelIndex])
 				{
+#ifdef SGNDIST_EXTRA_DEBUG
+					DebugDrawPoint(gridPos, 1.f, 0, 0);
+#endif
 					grp->m_dist[voxelIndex] = dist;
 					grp->m_closestTri[voxelIndex] = tri;
 				}
@@ -520,7 +583,7 @@ SignedDistanceField::VoxelOctNode* SignedDistanceField::Iterator::FindNextLeaf(V
 			}
 			else
 			{
-				return cur;
+				break;
 			}
 		}
 		else
@@ -543,6 +606,16 @@ SignedDistanceField::VoxelOctNode* SignedDistanceField::Iterator::FindNextLeaf(V
 			}
 		}
 	}
+#ifdef SGNDIST_EXTRA_DEBUG
+	if(cur)
+	{
+		AABB aabb;
+		aabb.Extend(m_field->CellCenterFromGridCoords(cur->m_minBounds[0], cur->m_minBounds[1], cur->m_minBounds[2]));
+		aabb.Extend(m_field->CellCenterFromGridCoords(cur->m_maxBounds[0], cur->m_maxBounds[1], cur->m_maxBounds[2]));
+
+		DebugDrawAABB(aabb);
+	}
+#endif
 	return cur;
 }
 
@@ -554,18 +627,18 @@ bool SignedDistanceField::Iterator::Valid() const
 bool SignedDistanceField::Iterator::NextVoxel()
 {
 	if(!m_node) return false;
-	if(m_pos[0] < m_node->m_maxBounds[0])
+	if(m_pos[0] < m_node->m_maxBounds[0] - 1)
 	{
 		++m_pos[0];
 		return true;
 	}
-	else if(m_pos[1] < m_node->m_maxBounds[1])
+	else if(m_pos[1] < m_node->m_maxBounds[1] - 1)
 	{
 		m_pos[0] = m_node->m_minBounds[0];
 		++m_pos[1];
 		return true;
 	}
-	else if(m_pos[2] < m_node->m_maxBounds[2])
+	else if(m_pos[2] < m_node->m_maxBounds[2] - 1)
 	{
 		m_pos[0] = m_node->m_minBounds[0];
 		m_pos[1] = m_node->m_minBounds[1];
@@ -624,6 +697,10 @@ float SignedDistanceField::Iterator::GetDistance() const
 {
 	if(m_node)
 	{
+		ASSERT(m_pos[0] >= m_node->m_minBounds[0] && m_pos[0] < m_node->m_maxBounds[0] &&
+			m_pos[1] >= m_node->m_minBounds[1] && m_pos[1] < m_node->m_maxBounds[1] &&
+			m_pos[2] >= m_node->m_minBounds[2] && m_pos[2] < m_node->m_maxBounds[2]);
+
 		ASSERT(m_node->m_leaf);
 		int blockLocal[3];
 		int groupLocal[3];
@@ -643,6 +720,9 @@ float SignedDistanceField::Iterator::GetDistance() const
 			kVoxelGroupDim * groupLocal[1] +
 			kVoxelGroupDim * kVoxelGroupDim * groupLocal[2];
 		ASSERT(grpIdx >= 0 && grpIdx < kVoxelGroupDataLen);
+
+		if(grp->m_closestTri[grpIdx] == UINT_MAX)
+			return FLT_MAX;
 
 		float dist = grp->m_dist[grpIdx];
 		float sign = grp->m_votesOutside[grpIdx] - grp->m_votesInside[grpIdx]; 

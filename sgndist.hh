@@ -21,7 +21,12 @@ public:
 	SignedDistanceField(const TriSoup& triSoup, float resolution);
 	~SignedDistanceField();
 
-	unsigned int GetGridDim(int axis) const { return m_dims[axis]; }
+	void Compute();
+	void ComputeTri(int i);
+	int NumTris() const;
+
+	const AABB& GetBounds() const { return m_bounds; }
+	const AABB GetAlignedBounds() const;
 	void GridCoordsFromVec(Vec3_arg pos, int& ix, int& iy, int &iz) const;
 	Vec3 CellCenterFromGridCoords(int ix, int iy, int iz) const;
 	
@@ -55,7 +60,6 @@ private:
 	AABB m_bounds;
 	int m_gridBoundsMin[3];
 	int m_gridBoundsMax[3];
-	unsigned int m_dims[3];
 	float m_resolution;
 	float m_invResolution;
 	//std::vector<VoxelLeafBlock*> m_blocks;

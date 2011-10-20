@@ -12,7 +12,8 @@
 
 enum AppState
 {
-	APPSTATE_LOAD,
+	APPSTATE_LOAD_MESH,
+	APPSTATE_COMPUTE_DIST,
 	APPSTATE_DISPLAY
 };
 
@@ -26,8 +27,9 @@ static TriSoup * g_triMesh;
 static timespec g_lastTime;					// last time, used for calculating dt
 static int g_width, g_height;
 static float g_clipMeshScale = 1.f;
-static bool g_visualizeMode = false;
-static AppState g_appState = APPSTATE_DISPLAY;
+static bool g_stepMesh = false;
+static bool g_stepDist = false;
+static AppState g_appState = APPSTATE_LOAD_MESH;
 static bool g_stepAllowed = false;
 static int g_currentFace = -1;
 static int g_currentFaceVerts[3];
@@ -53,7 +55,7 @@ static CmdOption g_options[] =
 	{ &CmdTriMesh, "--mesh", "-m", 1, "File containing the triangle mesh to clip against (PLY)." },
 	{ &CmdGraphics, "--graphics", "-g", 0, "Interactive render of results." },
 	{ &CmdScale, "--scale", "-s", 1, "Amount to scale clip mesh by." },
-	{ &CmdVisMode, "--vis", 0, 0, "Vis mode with stepping." },
+	{ &CmdVisMode, "--vis", 0, 1, "Vis mode with stepping [all, mesh, dist]" },
 	{ &CmdHelp, "--help", "-h", 0, "Display help." },
 };
 
@@ -77,10 +79,22 @@ void CmdScale(int, char** argv)
 	g_clipMeshScale = atof(argv[1]);
 }
 
-void CmdVisMode(int, char**)
+void CmdVisMode(int, char** argv)
 {
-	g_visualizeMode = true;
 	g_renderingEnabled = true;
+	if(strcasecmp(argv[1], "all") == 0)
+	{
+		g_stepMesh = true;
+		g_stepDist = true;
+	}
+	else if(strcasecmp(argv[1], "mesh") == 0)
+	{
+		g_stepMesh = true;
+	}
+	else if(strcasecmp(argv[1], "dist") == 0)
+	{
+		g_stepDist = true;
+	}
 }
 
 void CmdHelp(int, char**)
@@ -96,6 +110,7 @@ void CmdHelp(int, char**)
 			(opt.szOptionShort ? opt.szOptionShort : ""),
 			opt.szDesc);
 	}
+	exit(0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -140,9 +155,8 @@ int main(int argc, char **argv)
 //		return 1;
 //	}
 	TriSoup * clipMesh = 0;
-	if(g_visualizeMode)
+	if(g_stepMesh)
 	{
-		g_appState = APPSTATE_LOAD;
 		FILE* fp = fopen(g_triMeshFilename, "rb");
 		if(fp == 0)
 		{
@@ -167,9 +181,9 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		g_triMesh = clipMesh;
-		g_distField = new SignedDistanceField(*g_triMesh, 0.25f);
+		g_appState = AppState(int(g_appState) + 1);
 	}
-
+		
 	if(g_renderingEnabled)
 	{
 		glutInit(&argc, argv);
@@ -413,7 +427,7 @@ void OnIdle(void)
 
 	switch(g_appState)
 	{
-	case APPSTATE_LOAD:
+	case APPSTATE_LOAD_MESH:
 		{
 			if(g_stepAllowed)
 			{
@@ -428,8 +442,53 @@ void OnIdle(void)
 			}
 		}
 		break;
+	case APPSTATE_COMPUTE_DIST:
+		{
+			if(g_triMesh == 0)
+			{
+				g_appState = AppState(int(g_appState) + 1);
+				break;
+			}
+			else if(g_distField == 0)
+			{
+				g_distField = new SignedDistanceField(*g_triMesh, 0.25f);
+				if(g_stepDist)
+				{
+					g_currentFace = 0;
+				}
+				else
+				{
+					DisableDebugDraw();
+					g_distField->Compute();
+					EnableDebugDraw();
+					g_appState = AppState(int(g_appState) + 1);
+					glutPostRedisplay();
+					break;
+				}
+			}
 
+			if(g_stepAllowed)
+			{
+				g_stepAllowed = false;
+				ClearDebugDraw();
+				if(g_currentFace < g_distField->NumTris())
+				{
+					printf("Stepping...\n");
+					g_distField->ComputeTri(g_currentFace);
+					++g_currentFace;
+					glutPostRedisplay();
+				}
+				else
+				{
+					g_appState = AppState(int(g_appState) + 1);
+					glutPostRedisplay();
+					break;
+				}
+			}
+		}
+		break;
 	case APPSTATE_DISPLAY:
+		ClearDebugDraw();
 		break;
 	default:
 		break;
@@ -512,7 +571,7 @@ void OnDisplay(void)
 
 		glEnd();
 
-		if(g_appState == APPSTATE_LOAD && g_currentFace >= 0)
+		if(g_appState == APPSTATE_LOAD_MESH && g_currentFace >= 0)
 		{
 			glLineWidth(3.f);
 			glDisable(GL_LIGHTING);
@@ -534,8 +593,10 @@ void OnDisplay(void)
 		}
 	}
 
-	if(g_showDistField && g_distField)
+	if(g_appState == APPSTATE_DISPLAY && g_showDistField && g_distField)
 	{
+		DebugDrawAABB(g_distField->GetBounds());
+		DebugDrawAABB(g_distField->GetAlignedBounds());
 		SignedDistanceField::Iterator iter = g_distField->GetFirst();
 		glDisable(GL_LIGHTING);
 		glPointSize(3.f);
@@ -544,10 +605,10 @@ void OnDisplay(void)
 		{
 			const Vec3& pt = iter.GetCenter();
 			float dist = iter.GetDistance();
-			if(dist != FLT_MAX && dist != -FLT_MAX)
+			if(fabs(dist) < 3.f)
 			{
-				float intensity = Clamp(((fabsf(dist) / 25.f) + 1.f) / 2.f, 0.f, 1.f);
-				glColor3f(dist > 0.f ? intensity : 0.f, 0.f, dist < 0.f ? intensity : 0.f);
+				float intensity = 0.8f;
+				glColor3f(dist > 0.f ? intensity : 0.f, 0.f, dist <= 0.f ? intensity : 0.f);
 				glVertex3fv(&pt.x);
 			}
 			

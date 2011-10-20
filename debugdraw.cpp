@@ -69,6 +69,7 @@ struct ddVec
 ////////////////////////////////////////////////////////////////////////////////
 // Global State for debug rendering
 static std::vector< AABB > s_ddAABBs;
+static std::vector< OBB > s_ddOBBs;
 static std::vector< ddPoint > s_ddPoints;
 static std::vector< ddPlane > s_ddPlanes;
 static std::vector< ddSphere > s_ddSpheres;
@@ -77,6 +78,7 @@ static std::vector< ddVec > s_ddVecs;
 void ClearDebugDraw()
 {
 	s_ddAABBs.clear();
+	s_ddOBBs.clear();
 	s_ddPoints.clear();	
 	s_ddPlanes.clear();
 	s_ddSpheres.clear();
@@ -85,6 +87,7 @@ void ClearDebugDraw()
 }
 
 static void ddRenderAABBs();
+static void ddRenderOBBs();
 static void ddRenderPoints();
 static void ddRenderPlanes();
 static void ddRenderSpheres(); 
@@ -93,12 +96,15 @@ static void ddRenderVecs();
 
 void RenderDebugDraw()
 {
+	glDisable(GL_LIGHTING);
 	ddRenderAABBs();
+	ddRenderOBBs();
 	ddRenderPoints();
 	ddRenderPlanes();
 	ddRenderSpheres();
 	ddRenderTris();
 	ddRenderVecs();
+	glEnable(GL_LIGHTING);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -152,6 +158,65 @@ static void ddRenderAABBs()
 		glVertex3f(aabb.m_min.x, aabb.m_max.y, aabb.m_max.z); 
 
 	}
+	glEnd();
+}
+
+static void ddRenderOBBs()
+{
+	glBegin(GL_LINES);
+	glColor3f(0.7f, 0.5f, 0.1f);
+	for(int i = 0, c = s_ddOBBs.size(); i < c; ++i)
+	{
+		const OBB& obb = s_ddOBBs[i];
+		Vec3 pt0 = obb.m_center - obb.m_u - obb.m_v - obb.m_w;
+		Vec3 pt1 = obb.m_center + obb.m_u - obb.m_v - obb.m_w;
+		Vec3 pt2 = obb.m_center + obb.m_u + obb.m_v - obb.m_w;
+		Vec3 pt3 = obb.m_center - obb.m_u + obb.m_v - obb.m_w;
+		Vec3 pt4 = obb.m_center - obb.m_u - obb.m_v + obb.m_w;
+		Vec3 pt5 = obb.m_center + obb.m_u - obb.m_v + obb.m_w;
+		Vec3 pt6 = obb.m_center + obb.m_u + obb.m_v + obb.m_w;
+		Vec3 pt7 = obb.m_center - obb.m_u + obb.m_v + obb.m_w;
+
+		// Bottom half
+		glVertex3fv(&pt0.x);
+		glVertex3fv(&pt1.x);
+
+		glVertex3fv(&pt1.x);
+		glVertex3fv(&pt2.x);
+		
+		glVertex3fv(&pt2.x);
+		glVertex3fv(&pt3.x);
+		
+		glVertex3fv(&pt3.x);
+		glVertex3fv(&pt0.x);
+
+		// Top half
+		glVertex3fv(&pt4.x);
+		glVertex3fv(&pt5.x);
+
+		glVertex3fv(&pt5.x);
+		glVertex3fv(&pt6.x);
+		
+		glVertex3fv(&pt6.x);
+		glVertex3fv(&pt7.x);
+		
+		glVertex3fv(&pt7.x);
+		glVertex3fv(&pt4.x);
+
+		// Connecting lines
+		glVertex3fv(&pt0.x);
+		glVertex3fv(&pt4.x);
+
+		glVertex3fv(&pt1.x);
+		glVertex3fv(&pt5.x);
+		
+		glVertex3fv(&pt2.x);
+		glVertex3fv(&pt6.x);
+		
+		glVertex3fv(&pt3.x);
+		glVertex3fv(&pt7.x);
+
+	}	
 	glEnd();
 }
 
@@ -230,6 +295,12 @@ void DebugDrawAABB(const AABB& aabb)
 {
 	if(!g_bDebugDrawEnabled) return;
 	s_ddAABBs.push_back(aabb);
+}
+
+void DebugDrawOBB(const OBB& obb)
+{
+	if(!g_bDebugDrawEnabled) return;
+	s_ddOBBs.push_back(obb);
 }
 
 void DebugDrawPlane(const AABB& aabb, const Plane& plane)
