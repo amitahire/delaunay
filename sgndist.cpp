@@ -4,7 +4,7 @@
 #include "math/vec3.hh"
 #include <climits>
 
-static const int kVoxelGroupDim = 2;
+static const int kVoxelGroupDim = 4;
 static const int kVoxelGroupDataLen = kVoxelGroupDim * kVoxelGroupDim * kVoxelGroupDim;
 static const int kSmallestAllocationDim = 16;  // Oct tree will contain cubes of this dimension.
 
@@ -55,6 +55,7 @@ struct SignedDistanceField::VoxelOctNode
 		: m_minBounds()
 		, m_maxBounds()
 		, m_children()
+		, m_parent(0)
 		, m_leaf(0)
 	{}
 
@@ -68,6 +69,7 @@ struct SignedDistanceField::VoxelOctNode
 	int m_minBounds[3];
 	int m_maxBounds[3];
 	VoxelOctNode* m_children[8];
+	VoxelOctNode* m_parent;
 	VoxelLeafBlock* m_leaf;
 
 private:
@@ -130,6 +132,11 @@ SignedDistanceField::~SignedDistanceField()
 		//delete m_blocks[i];
 	delete m_root;
 }
+	
+SignedDistanceField::Iterator SignedDistanceField::GetFirst() 
+{
+	return Iterator(this, m_root);
+}
 
 SignedDistanceField::VoxelGroup* SignedDistanceField::FindVoxelGroup(int ix, int iy, int iz, VoxelOctNode*& cache) 
 {
@@ -189,6 +196,7 @@ SignedDistanceField::VoxelGroup* SignedDistanceField::FindVoxelGroup(int ix, int
 			if(!curNode->m_children[childIndex])
 			{
 				VoxelOctNode* node = new VoxelOctNode;
+				node->m_parent = curNode;
 				node->m_minBounds[0] = ix >= xHalf ? xHalf : curNode->m_minBounds[0];
 				node->m_maxBounds[0] = ix >= xHalf ? curNode->m_maxBounds[0] : xHalf;
 				node->m_minBounds[1] = iy >= yHalf ? yHalf : curNode->m_minBounds[1];
@@ -461,3 +469,218 @@ void SignedDistanceField::SplatVoxelGroup(
 	}
 
 }
+
+////////////////////////////////////////////////////////////////////////////////
+SignedDistanceField::Iterator::Iterator(SignedDistanceField* field, VoxelOctNode *top)
+	: m_field(field)
+	, m_node(0)
+	, m_pos()
+{
+	m_node = FindNextLeaf(top);
+	if(m_node)
+	{
+		for(int i = 0; i < 3; ++i)
+			m_pos[i] = m_node->m_minBounds[i];
+	}
+}
+	
+SignedDistanceField::Iterator::Iterator(const SignedDistanceField::Iterator& other)
+	: m_field(other.m_field)
+	, m_node(other.m_node)
+	, m_pos()
+{
+	for(int i = 0; i < 3; ++i)
+		m_pos[i] = other.m_pos[i];
+}
+
+SignedDistanceField::Iterator& SignedDistanceField::Iterator::operator=(const SignedDistanceField::Iterator& other)
+{
+	if(this != &other)
+	{
+		this->m_field = other.m_field;
+		this->m_node = other.m_node;
+		for(int i = 0; i < 3; ++i)
+			m_pos[i] = other.m_pos[i];
+	}
+	return *this;
+}
+
+SignedDistanceField::VoxelOctNode* SignedDistanceField::Iterator::FindNextLeaf(VoxelOctNode* top)
+{
+	int indexInParent = -1;
+	VoxelOctNode* cur = top;
+	while(cur)
+	{	
+		if(cur->m_leaf)
+		{
+			if(cur == m_node)
+			{
+				indexInParent = IndexInParent(cur);
+				cur = cur->m_parent;
+			}
+			else
+			{
+				return cur;
+			}
+		}
+		else
+		{
+			int i;
+			for(i = indexInParent + 1; i < 8; ++i)
+			{
+				if(cur->m_children[i])
+				{
+					indexInParent = -1;
+					cur = cur->m_children[i];
+					break;
+				}
+			}
+
+			if(i == 8)
+			{
+				indexInParent = IndexInParent(cur);
+				cur = cur->m_parent;
+			}
+		}
+	}
+	return cur;
+}
+
+bool SignedDistanceField::Iterator::Valid() const
+{
+	return m_node != 0;
+}
+	
+bool SignedDistanceField::Iterator::NextVoxel()
+{
+	if(!m_node) return false;
+	if(m_pos[0] < m_node->m_maxBounds[0])
+	{
+		++m_pos[0];
+		return true;
+	}
+	else if(m_pos[1] < m_node->m_maxBounds[1])
+	{
+		m_pos[0] = m_node->m_minBounds[0];
+		++m_pos[1];
+		return true;
+	}
+	else if(m_pos[2] < m_node->m_maxBounds[2])
+	{
+		m_pos[0] = m_node->m_minBounds[0];
+		m_pos[1] = m_node->m_minBounds[1];
+		++m_pos[2];
+		return true;
+	}
+	else return NextNode();
+}
+
+bool SignedDistanceField::Iterator::NextNode()
+{
+	m_node = FindNextLeaf(m_node);
+	if(m_node)
+	{
+		for(int i = 0; i < 3; ++i)
+		{
+			m_pos[i] = m_node->m_minBounds[i];
+		}
+	}
+	else
+	{
+		for(int i = 0; i < 3; ++i)
+			m_pos[i] = 0;
+	}
+	return m_node != 0;
+}
+
+int SignedDistanceField::Iterator::IndexInParent(VoxelOctNode* node) const
+{
+	if(node->m_parent == 0)
+		return -1;
+	int i;
+	for(i = 0; i < 8; ++i)
+	{
+		if(node->m_parent->m_children[i] == node)
+			break;
+	}
+	ASSERT(i != 8);
+	return i;
+}
+	
+Vec3 SignedDistanceField::Iterator::GetCenter() const
+{
+	if(m_node)
+	{
+		ASSERT(m_node->m_leaf);
+		return m_field->CellCenterFromGridCoords(m_pos[0], m_pos[1], m_pos[2]);
+	}
+	else
+	{
+		return Vec3(0,0,0);
+	}
+}
+
+float SignedDistanceField::Iterator::GetDistance() const
+{
+	if(m_node)
+	{
+		ASSERT(m_node->m_leaf);
+		int blockLocal[3];
+		int groupLocal[3];
+		for(int i = 0; i < 3; ++i)
+		{
+			int local = m_pos[i] - m_node->m_minBounds[i];
+			blockLocal[i] = local / kVoxelGroupDim;
+			groupLocal[i] = local % kVoxelGroupDim;
+		}
+
+		const VoxelGroup *grp = &m_node->m_leaf->m_groups[
+			blockLocal[0] +
+			VoxelLeafBlock::kLeafDim * blockLocal[1] +
+			VoxelLeafBlock::kLeafDim * VoxelLeafBlock::kLeafDim * blockLocal[2]];
+
+		int grpIdx = groupLocal[0] +
+			kVoxelGroupDim * groupLocal[1] +
+			kVoxelGroupDim * kVoxelGroupDim * groupLocal[2];
+		ASSERT(grpIdx >= 0 && grpIdx < kVoxelGroupDataLen);
+
+		float dist = grp->m_dist[grpIdx];
+		float sign = grp->m_votesOutside[grpIdx] - grp->m_votesInside[grpIdx]; 
+		if(sign == 0) sign = -1.f;
+		sign = sign / fabs(sign);
+		dist *= sign;
+		return dist;
+	}
+	else
+	{
+		return FLT_MAX;
+	}
+}
+
+int SignedDistanceField::Iterator::GetClosestTri() const
+{
+	if(m_node == 0)
+		return -1;
+
+	ASSERT(m_node->m_leaf);
+	int blockLocal[3];
+	int groupLocal[3];
+	for(int i = 0; i < 3; ++i)
+	{
+		int local = m_pos[i] - m_node->m_minBounds[i];
+		blockLocal[i] = local / kVoxelGroupDim;
+		groupLocal[i] = local % kVoxelGroupDim;
+	}
+
+	const VoxelGroup *grp = &m_node->m_leaf->m_groups[
+		blockLocal[0] +
+		VoxelLeafBlock::kLeafDim * blockLocal[1] +
+		VoxelLeafBlock::kLeafDim * VoxelLeafBlock::kLeafDim * blockLocal[2]];
+
+	int grpIdx = groupLocal[0] +
+		kVoxelGroupDataLen * groupLocal[1] +
+		kVoxelGroupDataLen * kVoxelGroupDataLen * groupLocal[2];
+	ASSERT(grpIdx >= 0 && grpIdx < kVoxelGroupDataLen);
+	return grp->m_closestTri[grpIdx];	
+}
+

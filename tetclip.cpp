@@ -35,6 +35,8 @@ static bool g_justShow = true;
 static float g_eyeDistTarget = 310.f;			
 static Vec3 g_centerTarget(0.f, 0.f, 0.f);		// camera center to lerp to
 static SignedDistanceField* g_distField;
+static bool g_showMesh = true;
+static bool g_showDistField = false;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Command line setup
@@ -165,7 +167,7 @@ int main(int argc, char **argv)
 			return 1;
 		}
 		g_triMesh = clipMesh;
-		g_distField = new SignedDistanceField(*g_triMesh, 0.5f);
+		g_distField = new SignedDistanceField(*g_triMesh, 0.25f);
 	}
 
 	if(g_renderingEnabled)
@@ -469,64 +471,91 @@ void OnDisplay(void)
 		
 	glEnable(GL_CULL_FACE);
 
-	glBegin(GL_TRIANGLES);
-	for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
+	if(g_showMesh)
 	{
-		float r = 0.8f, g = 0.8f, b = 0.8f, a = 1.f;
-		glColor4f(r,g,b,a);
-
-		int verts[3];
-		g_triMesh->GetFace(i, verts);
-		const Vec3& pt0 = g_triMesh->GetVertexPos(verts[0]);
-		const Vec3& pt1 = g_triMesh->GetVertexPos(verts[1]);
-		const Vec3& pt2 = g_triMesh->GetVertexPos(verts[2]);
-		Vec3 normal = normalize(cross(pt1 - pt0, pt2 - pt0));
-		glNormal3fv(&normal.x);
-		glVertex3fv(&pt0.x);
-		glVertex3fv(&pt1.x);
-		glVertex3fv(&pt2.x);
-	}
-
-	if(g_showBackface)
-	{
+		glBegin(GL_TRIANGLES);
 		for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
 		{
 			float r = 0.8f, g = 0.8f, b = 0.8f, a = 1.f;
 			glColor4f(r,g,b,a);
+
 			int verts[3];
 			g_triMesh->GetFace(i, verts);
 			const Vec3& pt0 = g_triMesh->GetVertexPos(verts[0]);
 			const Vec3& pt1 = g_triMesh->GetVertexPos(verts[1]);
 			const Vec3& pt2 = g_triMesh->GetVertexPos(verts[2]);
-			Vec3 normal = normalize(cross(pt2 - pt0, pt1 - pt0));
+			Vec3 normal = normalize(cross(pt1 - pt0, pt2 - pt0));
 			glNormal3fv(&normal.x);
 			glVertex3fv(&pt0.x);
-			glVertex3fv(&pt2.x);
 			glVertex3fv(&pt1.x);
+			glVertex3fv(&pt2.x);
+		}
+
+		if(g_showBackface)
+		{
+			for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
+			{
+				float r = 0.8f, g = 0.8f, b = 0.8f, a = 1.f;
+				glColor4f(r,g,b,a);
+				int verts[3];
+				g_triMesh->GetFace(i, verts);
+				const Vec3& pt0 = g_triMesh->GetVertexPos(verts[0]);
+				const Vec3& pt1 = g_triMesh->GetVertexPos(verts[1]);
+				const Vec3& pt2 = g_triMesh->GetVertexPos(verts[2]);
+				Vec3 normal = normalize(cross(pt2 - pt0, pt1 - pt0));
+				glNormal3fv(&normal.x);
+				glVertex3fv(&pt0.x);
+				glVertex3fv(&pt2.x);
+				glVertex3fv(&pt1.x);
+			}
+		}
+
+		glEnd();
+
+		if(g_appState == APPSTATE_LOAD && g_currentFace >= 0)
+		{
+			glLineWidth(3.f);
+			glDisable(GL_LIGHTING);
+			glDisable(GL_DEPTH_TEST);
+			glBegin(GL_LINES);
+			glColor4f(1, 0, 0, 0.2f);
+			for(int i = 0; i < (int)ARRAY_SIZE(g_currentFaceVerts); ++i)
+			{
+				int next = (i+1) % ARRAY_SIZE(g_currentFaceVerts);
+				const Vec3& pt0 = g_triMesh->GetVertexPos(g_currentFaceVerts[i]);
+				const Vec3& pt1 = g_triMesh->GetVertexPos(g_currentFaceVerts[next]);
+				glVertex3fv(&pt0.x);
+				glVertex3fv(&pt1.x);
+			}
+			glEnd();
+
+			glEnable(GL_LIGHTING);
+			glEnable(GL_DEPTH_TEST);
 		}
 	}
 
-	glEnd();
-	
-	if(g_appState == APPSTATE_LOAD && g_currentFace >= 0)
+	if(g_showDistField && g_distField)
 	{
-		glLineWidth(3.f);
+		SignedDistanceField::Iterator iter = g_distField->GetFirst();
 		glDisable(GL_LIGHTING);
-		glDisable(GL_DEPTH_TEST);
-		glBegin(GL_LINES);
-		glColor4f(1, 0, 0, 0.2f);
-		for(int i = 0; i < (int)ARRAY_SIZE(g_currentFaceVerts); ++i)
+		glPointSize(3.f);
+		glBegin(GL_POINTS);
+		while(iter.Valid())
 		{
-			int next = (i+1) % ARRAY_SIZE(g_currentFaceVerts);
-			const Vec3& pt0 = g_triMesh->GetVertexPos(g_currentFaceVerts[i]);
-			const Vec3& pt1 = g_triMesh->GetVertexPos(g_currentFaceVerts[next]);
-			glVertex3fv(&pt0.x);
-			glVertex3fv(&pt1.x);
+			const Vec3& pt = iter.GetCenter();
+			float dist = iter.GetDistance();
+			if(dist != FLT_MAX && dist != -FLT_MAX)
+			{
+				float intensity = Clamp(((fabsf(dist) / 25.f) + 1.f) / 2.f, 0.f, 1.f);
+				glColor3f(dist > 0.f ? intensity : 0.f, 0.f, dist < 0.f ? intensity : 0.f);
+				glVertex3fv(&pt.x);
+			}
+			
+			iter.NextVoxel();
 		}
 		glEnd();
-
+		glPointSize(1.f);
 		glEnable(GL_LIGHTING);
-		glEnable(GL_DEPTH_TEST);
 	}
 
 	RenderDebugDraw();
@@ -541,14 +570,14 @@ void OnKeyboard(unsigned char key, int x, int y)
 		g_showBackface = !g_showBackface;
 		glutPostRedisplay();
 	}
-	else if(key == 'n')
-	{
-		FindFloating(true);
-	}
-	else if(key == 'p')
-	{
-		FindFloating(false);
-	}
+	//else if(key == 'n')
+	//{
+	//	FindFloating(true);
+	//}
+	//else if(key == 'p')
+	//{
+	//	FindFloating(false);
+	//}
 	else if(key == 'f')
 	{
 		g_showProblemFaces = !g_showProblemFaces;
@@ -557,6 +586,16 @@ void OnKeyboard(unsigned char key, int x, int y)
 	else if(key == 's')
 	{
 		g_stepAllowed = true;
+	}
+	else if(key == 'h')
+	{
+		g_showMesh = !g_showMesh;
+		glutPostRedisplay();
+	}
+	else if(key == 'd')
+	{
+		g_showDistField = !g_showDistField;
+		glutPostRedisplay();
 	}
 }
 

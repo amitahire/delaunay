@@ -9,7 +9,7 @@ OBJS_TETCLIP = $(SRC_TETCLIP:.cpp=.o)
 all: delaunay makepoints tetclip
 
 %.o : %.cpp
-	g++ -c -o $*.o -g -Wall -Wextra -Weffc++ -pedantic -ggdb -I. -DDEBUG -DLINUX $*.cpp
+	g++ -c -o $*.o -g -Wall -Wextra -Weffc++ -pedantic -O -ggdb -I. -DDEBUG -DLINUX $*.cpp
 
 delaunay : $(OBJS_DELAUNAY)
 	g++ -o delaunay $(OBJS_DELAUNAY) -lm -lGL -lGLU -lglut

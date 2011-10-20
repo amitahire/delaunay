@@ -16,7 +16,6 @@ class SignedDistanceField
 public:
 	////////////////////////////////////////////////////////////////////////////////	
 	class Iterator;
-	//class ConstIterator;
 
 	////////////////////////////////////////////////////////////////////////////////	
 	SignedDistanceField(const TriSoup& triSoup, float resolution);
@@ -27,7 +26,6 @@ public:
 	Vec3 CellCenterFromGridCoords(int ix, int iy, int iz) const;
 	
 	Iterator GetFirst() ;	
-	//ConstIterator GetFirst() const;	
 private:
 	// non-copyable for now
 	SignedDistanceField(const SignedDistanceField& other);
@@ -73,17 +71,20 @@ public:
 	Iterator& operator=(const Iterator& other);
 
 	bool Valid() const;
-	void Next();
-	Iterator GetNeighbor(int dx, int dy, int dz) const;
+	bool NextVoxel();
+	bool NextNode();
 
 	Vec3 GetCenter() const;
 	float GetDistance() const;
-
+	int GetClosestTri() const;
 private:
 	////////////////////////////////////////////////////////////////////////////////	
-	explicit Iterator(SignedDistanceField *field, int (&pos)[3]);
+	explicit Iterator(SignedDistanceField *field, VoxelOctNode* top);
+	int IndexInParent(VoxelOctNode* node) const;
+	VoxelOctNode* FindNextLeaf(VoxelOctNode* top);
 
 	////////////////////////////////////////////////////////////////////////////////	
-	SignedDistanceField* m_field;
+	SignedDistanceField *m_field;
+	VoxelOctNode* m_node;
 	int m_pos[3];
 };
