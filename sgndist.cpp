@@ -333,16 +333,16 @@ void SignedDistanceField::ComputeTriangleDistances(int tri, const Vec3 (&verts)[
 	DebugDrawAABB(bounds);
 #endif
 
-	int ix, iy, iz;
-	GridCoordsFromVec(bounds.m_min, ix, iy, iz);
-	ix = (ix / kVoxelGroupDim) * kVoxelGroupDim;
-	iy = (iy / kVoxelGroupDim) * kVoxelGroupDim;
-	iz = (iz / kVoxelGroupDim) * kVoxelGroupDim;
+	int startX, startY, startZ;
+	GridCoordsFromVec(bounds.m_min, startX, startY, startZ);
+	startX = (startX / kVoxelGroupDim) * kVoxelGroupDim;
+	startY = (startY / kVoxelGroupDim) * kVoxelGroupDim;
+	startZ = (startZ / kVoxelGroupDim) * kVoxelGroupDim;
 
 	int endX, endY, endZ;
 	GridCoordsFromVec(bounds.m_max, endX, endY, endZ);
 
-	Vec3 gridPosStart = CellCenterFromGridCoords(ix, iy, iz);
+	Vec3 gridPosStart = CellCenterFromGridCoords(startX, startY, startZ);
 	float planeStart[3];
 	float planeIncX[3]; // value to add when incrementing along X to plane i
 	float planeIncY[3]; 
@@ -357,17 +357,17 @@ void SignedDistanceField::ComputeTriangleDistances(int tri, const Vec3 (&verts)[
 
 	// And start the compute.
 	VoxelOctNode* cache = 0;
-	for(int curZ = iz; curZ <= endZ; curZ += kVoxelGroupDim)
+	for(int curZ = startZ; curZ <= endZ; curZ += kVoxelGroupDim)
 	{
-		int offZ = curZ - iz;
-		for(int curY = iy; curY <= endY; curY += kVoxelGroupDim)
+		int offZ = curZ - startZ;
+		for(int curY = startY; curY <= endY; curY += kVoxelGroupDim)
 		{
 			float curPlanes[3];
-			int offY = curY - iy;
+			int offY = curY - startY;
 			for(int i = 0; i < 3; ++i)
 				curPlanes[i] = planeStart[i] + offZ * planeIncZ[i] + offY * planeIncY[i];
 		
-			for(int curX = ix; curX <= endX; curX += kVoxelGroupDim)
+			for(int curX = startX; curX <= endX; curX += kVoxelGroupDim)
 			{
 				VoxelGroup* grp = FindVoxelGroup(curX, curY, curZ, cache);
 				if(grp)
