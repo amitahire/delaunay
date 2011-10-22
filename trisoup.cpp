@@ -116,7 +116,7 @@ void TriSoup::Clear()
 {
 	for(int i = 0, c = m_faces.size(); i < c; ++i)
 		delete m_faces[i];
-	for(int i = 0, c = m_faces.size(); i < c; ++i)
+	for(int i = 0, c = m_vertices.size(); i < c; ++i)
 		delete m_vertices[i];
 
 	m_faces.clear();

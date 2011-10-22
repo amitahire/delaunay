@@ -9,11 +9,14 @@
 #include "trisoup.hh"
 #include "debugdraw.hh"
 #include "sgndist.hh"
+#include "surfconst.hh"
+#include "ptr.hh"
 
 enum AppState
 {
 	APPSTATE_LOAD_MESH,
 	APPSTATE_COMPUTE_DIST,
+	APPSTATE_COMPUTE_RECON,
 	APPSTATE_DISPLAY
 };
 
@@ -22,13 +25,17 @@ enum AppState
 static const char * g_volMeshFilename;
 static const char * g_triMeshFilename;
 static bool g_renderingEnabled = false;
-static PlyData * g_ply;
-static TriSoup * g_triMesh;
+static ScopedPtr<PlyData>::Type g_ply;
+static ScopedPtr<TriSoup>::Type g_triMesh;
+static ScopedPtr<TriSoup>::Type g_triMeshRecon;
+static ScopedPtr<SignedDistanceField>::Type g_distField;
+static ScopedPtr<TetrahedronMarcher>::Type g_tetMarcher;
 static timespec g_lastTime;					// last time, used for calculating dt
 static int g_width, g_height;
 static float g_clipMeshScale = 1.f;
 static bool g_stepMesh = false;
 static bool g_stepDist = false;
+static bool g_stepRecon = false;
 static AppState g_appState = APPSTATE_LOAD_MESH;
 static bool g_stepAllowed = false;
 static int g_currentFace = -1;
@@ -36,9 +43,16 @@ static int g_currentFaceVerts[3];
 static bool g_justShow = true;
 static float g_eyeDistTarget = 310.f;			
 static Vec3 g_centerTarget(0.f, 0.f, 0.f);		// camera center to lerp to
-static SignedDistanceField* g_distField;
 static bool g_showMesh = true;
 static bool g_showDistField = false;
+static bool g_showReconstruction = false;
+static float g_eyeDist = 310.f, 				// Camera parameters.
+	g_pitch = M_PI / 4.f, 
+	g_yaw = M_PI / 4.f;
+static Vec3 g_center(0,0,0);
+static int g_lastx = -1, g_lasty = -1;
+static bool g_showBackface = true;
+static bool g_showProblemFaces = false;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Command line setup
@@ -86,6 +100,7 @@ void CmdVisMode(int, char** argv)
 	{
 		g_stepMesh = true;
 		g_stepDist = true;
+		g_stepRecon = true;
 	}
 	else if(strcasecmp(argv[1], "mesh") == 0)
 	{
@@ -94,6 +109,10 @@ void CmdVisMode(int, char** argv)
 	else if(strcasecmp(argv[1], "dist") == 0)
 	{
 		g_stepDist = true;
+	}
+	else if(strcasecmp(argv[1], "recon") == 0)
+	{
+		g_stepRecon = true;
 	}
 }
 
@@ -166,7 +185,6 @@ int main(int argc, char **argv)
 		g_ply = new PlyData();
 		if(!g_ply->Read(fp))
 		{
-			delete g_ply;
 			g_ply = 0;
 		}
 
@@ -355,15 +373,6 @@ VolMesh * ReadVolumeMesh(const char*)
 
 ////////////////////////////////////////////////////////////////////////////////
 // OpenGL and GLUT stuff
-static float g_eyeDist = 310.f, 				// Camera parameters.
-	g_pitch = M_PI / 4.f, 
-	g_yaw = M_PI / 4.f;
-static Vec3 g_center(0,0,0);
-static int g_lastx = -1, g_lasty = -1;
-static bool g_showBackface = true;
-static bool g_showProblemFaces = false;
-static int g_currentFloating = -1;
-
 void SetupGL()
 {
 	glClearColor(0.1f, 0.1f, 0.1f, 1.f);
@@ -427,6 +436,7 @@ void OnIdle(void)
 
 	switch(g_appState)
 	{
+	////////////////////////////////////////////////////////////////////////////////
 	case APPSTATE_LOAD_MESH:
 		{
 			if(g_stepAllowed)
@@ -442,6 +452,8 @@ void OnIdle(void)
 			}
 		}
 		break;
+	
+	////////////////////////////////////////////////////////////////////////////////
 	case APPSTATE_COMPUTE_DIST:
 		{
 			if(g_triMesh == 0)
@@ -451,7 +463,7 @@ void OnIdle(void)
 			}
 			else if(g_distField == 0)
 			{
-				g_distField = new SignedDistanceField(*g_triMesh, 0.25f);
+				g_distField = new SignedDistanceField(*g_triMesh, 0.5f, 0.5f * 5.5f);
 				if(g_stepDist)
 				{
 					g_currentFace = 0;
@@ -487,6 +499,45 @@ void OnIdle(void)
 			}
 		}
 		break;
+
+	////////////////////////////////////////////////////////////////////////////////
+	case APPSTATE_COMPUTE_RECON:
+		{
+			if(g_tetMarcher == 0)
+			{
+				AABB bounds = g_distField->GetBounds();
+				bounds.m_min -= Vec3(2.f, 2.f, 2.f);
+				bounds.m_max += Vec3(2.f, 2.f, 2.f);
+				g_tetMarcher = new TetrahedronMarcher(g_distField, bounds, 1.f);
+				if(!g_stepRecon)
+				{
+					DisableDebugDraw();
+					g_tetMarcher->Create();
+					g_tetMarcher->AcquireMesh(g_triMeshRecon);
+					EnableDebugDraw();
+					g_appState = AppState(int(g_appState) + 1);
+					glutPostRedisplay();
+					break;
+				}
+			}
+
+			if(g_stepAllowed)
+			{
+				g_stepAllowed = false;
+				ClearDebugDraw();
+				if(!g_tetMarcher->Step())
+				{
+					g_appState = AppState(int(g_appState) + 1);
+					g_tetMarcher->AcquireMesh(g_triMeshRecon);
+				}
+				glutPostRedisplay();
+				break;
+			}
+
+		}
+		break;
+	
+	////////////////////////////////////////////////////////////////////////////////
 	case APPSTATE_DISPLAY:
 		ClearDebugDraw();
 		break;
@@ -507,6 +558,48 @@ void OnReshape(int width, int height)
 	glLoadIdentity();
 
 	glutPostRedisplay();
+}
+
+void DrawMesh(const TriSoup& mesh)
+{
+	glBegin(GL_TRIANGLES);
+	for(int i = 0, c = mesh.NumFaces(); i < c; ++i)
+	{
+		float r = 0.8f, g = 0.8f, b = 0.8f, a = 1.f;
+		glColor4f(r,g,b,a);
+
+		int verts[3];
+		mesh.GetFace(i, verts);
+		const Vec3& pt0 = mesh.GetVertexPos(verts[0]);
+		const Vec3& pt1 = mesh.GetVertexPos(verts[1]);
+		const Vec3& pt2 = mesh.GetVertexPos(verts[2]);
+		Vec3 normal = normalize(cross(pt1 - pt0, pt2 - pt0));
+		glNormal3fv(&normal.x);
+		glVertex3fv(&pt0.x);
+		glVertex3fv(&pt1.x);
+		glVertex3fv(&pt2.x);
+	}
+
+	if(g_showBackface)
+	{
+		for(int i = 0, c = mesh.NumFaces(); i < c; ++i)
+		{
+			float r = 0.8f, g = 0.8f, b = 0.8f, a = 1.f;
+			glColor4f(r,g,b,a);
+			int verts[3];
+			mesh.GetFace(i, verts);
+			const Vec3& pt0 = mesh.GetVertexPos(verts[0]);
+			const Vec3& pt1 = mesh.GetVertexPos(verts[1]);
+			const Vec3& pt2 = mesh.GetVertexPos(verts[2]);
+			Vec3 normal = normalize(cross(pt2 - pt0, pt1 - pt0));
+			glNormal3fv(&normal.x);
+			glVertex3fv(&pt0.x);
+			glVertex3fv(&pt2.x);
+			glVertex3fv(&pt1.x);
+		}
+	}
+
+	glEnd();
 }
 
 void OnDisplay(void)
@@ -530,46 +623,9 @@ void OnDisplay(void)
 		
 	glEnable(GL_CULL_FACE);
 
-	if(g_showMesh)
+	if(g_showMesh && g_triMesh)
 	{
-		glBegin(GL_TRIANGLES);
-		for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
-		{
-			float r = 0.8f, g = 0.8f, b = 0.8f, a = 1.f;
-			glColor4f(r,g,b,a);
-
-			int verts[3];
-			g_triMesh->GetFace(i, verts);
-			const Vec3& pt0 = g_triMesh->GetVertexPos(verts[0]);
-			const Vec3& pt1 = g_triMesh->GetVertexPos(verts[1]);
-			const Vec3& pt2 = g_triMesh->GetVertexPos(verts[2]);
-			Vec3 normal = normalize(cross(pt1 - pt0, pt2 - pt0));
-			glNormal3fv(&normal.x);
-			glVertex3fv(&pt0.x);
-			glVertex3fv(&pt1.x);
-			glVertex3fv(&pt2.x);
-		}
-
-		if(g_showBackface)
-		{
-			for(int i = 0, c = g_triMesh->NumFaces(); i < c; ++i)
-			{
-				float r = 0.8f, g = 0.8f, b = 0.8f, a = 1.f;
-				glColor4f(r,g,b,a);
-				int verts[3];
-				g_triMesh->GetFace(i, verts);
-				const Vec3& pt0 = g_triMesh->GetVertexPos(verts[0]);
-				const Vec3& pt1 = g_triMesh->GetVertexPos(verts[1]);
-				const Vec3& pt2 = g_triMesh->GetVertexPos(verts[2]);
-				Vec3 normal = normalize(cross(pt2 - pt0, pt1 - pt0));
-				glNormal3fv(&normal.x);
-				glVertex3fv(&pt0.x);
-				glVertex3fv(&pt2.x);
-				glVertex3fv(&pt1.x);
-			}
-		}
-
-		glEnd();
+		DrawMesh(*g_triMesh);
 
 		if(g_appState == APPSTATE_LOAD_MESH && g_currentFace >= 0)
 		{
@@ -593,7 +649,7 @@ void OnDisplay(void)
 		}
 	}
 
-	if(g_appState == APPSTATE_DISPLAY && g_showDistField && g_distField)
+	if(g_showDistField && g_distField)
 	{
 		DebugDrawAABB(g_distField->GetBounds());
 		DebugDrawAABB(g_distField->GetAlignedBounds());
@@ -605,7 +661,7 @@ void OnDisplay(void)
 		{
 			const Vec3& pt = iter.GetCenter();
 			float dist = iter.GetDistance();
-			if(fabs(dist) < 3.f)
+			if(fabs(dist) < 0.5f)
 			{
 				float intensity = 0.8f;
 				glColor3f(dist > 0.f ? intensity : 0.f, 0.f, dist <= 0.f ? intensity : 0.f);
@@ -617,6 +673,16 @@ void OnDisplay(void)
 		glEnd();
 		glPointSize(1.f);
 		glEnable(GL_LIGHTING);
+	}
+
+	if(g_showReconstruction)
+	{
+		if(g_triMeshRecon)
+			DrawMesh(*g_triMeshRecon);
+		else if(g_tetMarcher && g_tetMarcher->GetMesh())
+		{
+			DrawMesh(*g_tetMarcher->GetMesh());
+		}
 	}
 
 	RenderDebugDraw();
@@ -631,14 +697,6 @@ void OnKeyboard(unsigned char key, int x, int y)
 		g_showBackface = !g_showBackface;
 		glutPostRedisplay();
 	}
-	//else if(key == 'n')
-	//{
-	//	FindFloating(true);
-	//}
-	//else if(key == 'p')
-	//{
-	//	FindFloating(false);
-	//}
 	else if(key == 'f')
 	{
 		g_showProblemFaces = !g_showProblemFaces;
@@ -656,6 +714,11 @@ void OnKeyboard(unsigned char key, int x, int y)
 	else if(key == 'd')
 	{
 		g_showDistField = !g_showDistField;
+		glutPostRedisplay();
+	}
+	else if(key == 'r')
+	{
+		g_showReconstruction = !g_showReconstruction;
 		glutPostRedisplay();
 	}
 }
@@ -702,54 +765,5 @@ void OnMotion(int x, int y)
 	g_yaw += 5.f * (dx / float(g_width)) / M_PI;
 
 	glutPostRedisplay();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void FindFloating(bool forward)
-{
-	if(!g_triMesh) return;
-	int count = g_triMesh->NumFaces();
-	int cur = g_currentFloating;
-	if(cur == -1) cur = 0;
-	else cur = (forward ? (cur + 1) % count : (cur + count - 1) % count);
-	int i;
-	for(i = 0; i < count; ++i)
-	{
-		const char * data = g_triMesh->GetFaceData(cur);
-		if(data)
-		{
-			const bool * boolData = reinterpret_cast<const bool*>(data);
-			if(*boolData) {
-				g_currentFloating = cur;
-				break;
-			}
-		}
-
-		cur = (forward ? (cur + 1) % count : (cur + count - 1) % count);
-	}
-	if(i == count)
-	{
-		g_currentFloating = -1;
-		Vec3 avgPoint(0,0,0);
-		float avgFactor = 1.f / g_triMesh->NumVertices();
-
-		for(int i = 0, c = g_triMesh->NumVertices(); i < c; ++i)
-		{
-			const Vec3& pt = g_triMesh->GetVertexPos(i);
-			avgPoint += avgFactor * pt;
-		}
-		g_centerTarget = avgPoint;
-	}
-	else
-	{
-		int verts[3];
-		g_triMesh->GetFace(g_currentFloating, verts);
-		float factor = 1.f / 3.f;
-		g_centerTarget = Vec3(0,0,0);
-		for(int i = 0; i < 3; ++i)
-		{
-			g_centerTarget += factor * g_triMesh->GetVertexPos(verts[i]);
-		}	
-	}
 }
 

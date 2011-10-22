@@ -62,10 +62,14 @@ ScopedPtrImpl<T, IsArray>& ScopedPtrImpl<T, IsArray>::operator=(T* ptr)
 template<class T, bool IsArray>
 ScopedPtrImpl<T, IsArray>& ScopedPtrImpl<T, IsArray>::operator=(const ScopedPtrImpl& other)
 {
-	ASSERT(m_ptr != other.m_ptr); // If this fires, then the object is probably going to be deleted twice anyways
-	PtrPolicy<T, IsArray>::Delete(m_ptr);
-	m_ptr = other.m_ptr;
-	other.m_ptr = 0;
+	if(this != &other)
+	{
+		ASSERT(m_ptr != other.m_ptr); // If this fires, then the object is probably going to be deleted twice anyways
+		PtrPolicy<T, IsArray>::Delete(m_ptr);
+		m_ptr = other.m_ptr;
+		other.m_ptr = 0;
+	}
+	return *this;
 }
 
 template<class T, bool IsArray>

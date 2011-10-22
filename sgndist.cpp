@@ -7,9 +7,9 @@
 
 #undef SGNDIST_EXTRA_DEBUG
 
-static const int kVoxelGroupDim = 2;
+static const int kVoxelGroupDim = 4;
 static const int kVoxelGroupDataLen = kVoxelGroupDim * kVoxelGroupDim * kVoxelGroupDim;
-static const int kSmallestAllocationDim = 16;  // Oct tree will contain cubes of this dimension.
+static const int kSmallestAllocationDim = 32;  // Oct tree will contain cubes of this dimension.
 
 COMPILE_ASSERT( (kSmallestAllocationDim / kVoxelGroupDim) >= 0);
 COMPILE_ASSERT( (kSmallestAllocationDim % kVoxelGroupDim) == 0 );
@@ -21,8 +21,6 @@ struct SignedDistanceField::VoxelGroup
 	VoxelGroup()
 		: m_dist()
 		, m_closestTri()
-		, m_votesInside()
-		, m_votesOutside()
 	{
 		for(int i = 0; i < kVoxelGroupDataLen; ++i)
 		{
@@ -33,8 +31,6 @@ struct SignedDistanceField::VoxelGroup
 
 	float m_dist[kVoxelGroupDataLen];
 	unsigned int m_closestTri[kVoxelGroupDataLen];
-	unsigned short m_votesInside[kVoxelGroupDataLen];
-	unsigned short m_votesOutside[kVoxelGroupDataLen];
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -82,7 +78,7 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-SignedDistanceField::SignedDistanceField(const TriSoup& triSoup, float resolution)
+SignedDistanceField::SignedDistanceField(const TriSoup& triSoup, float resolution, float narrowBandWidth)
 	: m_triSoup(new TriSoup(triSoup))
 	, m_bounds()
 	, m_gridBoundsMin()
@@ -91,6 +87,7 @@ SignedDistanceField::SignedDistanceField(const TriSoup& triSoup, float resolutio
 	, m_invResolution(1.f / resolution)
 	//, m_blocks()
 	, m_root(0)
+	, m_narrowBandWidth(narrowBandWidth)
 {
 	for(int i = 0, c = m_triSoup->NumVertices(); i < c; ++i)
 		m_bounds.Extend(m_triSoup->GetVertexPos(i));
@@ -152,7 +149,12 @@ SignedDistanceField::Iterator SignedDistanceField::GetFirst()
 	return Iterator(this, m_root);
 }
 
-SignedDistanceField::VoxelGroup* SignedDistanceField::FindVoxelGroup(int ix, int iy, int iz, VoxelOctNode*& cache) 
+SignedDistanceField::Sampler SignedDistanceField::GetSampler() 
+{
+	return Sampler(this);
+}
+
+SignedDistanceField::VoxelGroup* SignedDistanceField::FindVoxelGroup(int ix, int iy, int iz, VoxelOctNode*& cache, bool createIfMissing) 
 {
 	ASSERT(m_root);
 	VoxelOctNode* curNode = m_root;
@@ -171,7 +173,7 @@ SignedDistanceField::VoxelGroup* SignedDistanceField::FindVoxelGroup(int ix, int
 	}
 
 	VoxelGroup *grp = 0;
-	while(true)
+	while(curNode)
 	{
 
 #ifdef SGNDIST_EXTRA_DEBUG
@@ -228,7 +230,7 @@ SignedDistanceField::VoxelGroup* SignedDistanceField::FindVoxelGroup(int ix, int
 			unsigned childIndex = (zSide << 2) + (ySide << 1) + xSide;
 			ASSERT(childIndex < 8);
 
-			if(!curNode->m_children[childIndex])
+			if(!curNode->m_children[childIndex] && createIfMissing)
 			{
 				VoxelOctNode* node = new VoxelOctNode;
 				node->m_parent = curNode;
@@ -292,9 +294,9 @@ Vec3 SignedDistanceField::CellCenterFromGridCoords(int ix, int iy, int iz) const
 void SignedDistanceField::ComputeTriangleDistances(int tri, const Vec3 (&verts)[3])
 {
 	const float resolution = m_resolution;
-	const float obbSize = resolution * 5.5;
+	const float obbSize = m_narrowBandWidth;
 
-	// Setup planes for fast iteration.
+	// Setup planes for iteration.
 	float w = 1/3.f;
 	Vec3 center = w * verts[0] + w * verts[1] + w * verts[2];
 
@@ -369,7 +371,7 @@ void SignedDistanceField::ComputeTriangleDistances(int tri, const Vec3 (&verts)[
 		
 			for(int curX = startX; curX <= endX; curX += kVoxelGroupDim)
 			{
-				VoxelGroup* grp = FindVoxelGroup(curX, curY, curZ, cache);
+				VoxelGroup* grp = FindVoxelGroup(curX, curY, curZ, cache, true);
 				if(grp)
 				{
 					SplatVoxelGroup(
@@ -401,6 +403,7 @@ void SignedDistanceField::SplatVoxelGroup(
 		const float (&planeIncZ)[3],
 		const float (&distances)[3])
 {
+	const float resolution = m_resolution;
 	ASSERT(grp);
 	Vec3 ab = diff[0];
 	Vec3 ac = -diff[2];
@@ -414,11 +417,12 @@ void SignedDistanceField::SplatVoxelGroup(
 			float plane1 = curPlanes[1] + planeIncZ[1] * z + planeIncY[1] * y;
 			float plane2 = curPlanes[2] + planeIncZ[2] * z + planeIncY[2] * y;
 			Vec3 gridPos = gridPosStart;
-			gridPos.z += z * m_resolution;
-			gridPos.y += y * m_resolution;
+			gridPos.z += z * resolution;
+			gridPos.y += y * resolution;
 			for(int x = 0; x < kVoxelGroupDim; ++x)
 			{
 				float dist = FLT_MAX;
+				Vec3 closestPt(0,0,0);
 				// this could turn into a write mask
 				if(fabs(plane0) < distances[0] &&
 					fabs(plane1) < distances[1] &&
@@ -451,7 +455,7 @@ void SignedDistanceField::SplatVoxelGroup(
 					{
 						if(d1 <= 0.0f && d2 <= 0.0f)  // barycentric coordinates (1, 0, 0)
 						{
-							dist = magnitude(verts[0] - gridPos);
+							closestPt = verts[0];
 							break;
 						}
 
@@ -461,14 +465,14 @@ void SignedDistanceField::SplatVoxelGroup(
 
 						if(d3 >= 0.f && d4 <= d3) // barycentric coordinates (0, 1, 0)
 						{
-							dist = magnitude(verts[1] - gridPos);
+							closestPt = verts[1];
 							break;
 						}
 						float vc = d1*d4 - d3*d2;
 						if(vc <= 0.f && d1 >= 0.f && d3 <= 0.f) // barycentric coordinates (1-v, v, 0)
 						{
 							float v = d1 / (d1 - d3); 
-							dist = magnitude(verts[0] + v * ab - gridPos);  
+							closestPt = verts[0] + v * ab;
 							break;
 						}
 
@@ -478,7 +482,7 @@ void SignedDistanceField::SplatVoxelGroup(
 
 						if(d6 >= 0.f && d5 <= d6) // barycentric coordinates (0, 0, 1)
 						{
-							dist = magnitude(verts[2] - gridPos);
+							closestPt = verts[2];
 							break;
 						}
 						
@@ -486,7 +490,7 @@ void SignedDistanceField::SplatVoxelGroup(
 						if(vb <= 0.f && d2 >= 0.f && d6 <= 0.f) // barycentric coordinates (1-v, 0, v)
 						{
 							float v = d2 / (d2 - d6);
-							dist = magnitude(verts[0] + v * ac - gridPos);
+							closestPt = verts[0] + v * ac;
 							break;
 						}
 
@@ -494,38 +498,32 @@ void SignedDistanceField::SplatVoxelGroup(
 						if(va <= 0.f && (d4 - d3) >= 0.f && (d5 - d6) >= 0.f) // barycentric coordinates (0, v, 1-v)
 						{
 							float v = (d4 - d3) / (d4 - d3 + d5 - d6);
-							dist = magnitude(verts[1] + v * diff[1] - gridPos);
+							closestPt = verts[1] + v * diff[1];
 							break;
 						}
 
-						// Outside of this context, we could find the barycentric coordinates of each
-						//  component to find the exact point in the triangle. We only care about
-						//  distance for this though, so at this point it's safe to just use the plane2 
-						//  absolute distance.
-
-						dist = fabs(plane2);
+						float inv_abc = 1.f / (va + vb + vc);
+						float u = va * inv_abc;
+						float v = vb * inv_abc;
+						float w = vc * inv_abc;
+						closestPt = verts[0] * u + verts[1] * v + verts[2] * w;
 					} while(false); // uhm, disassemble this sometime and find out how bad it is
-				}
 
-				if(dist < grp->m_dist[voxelIndex])
-				{
+					dist = magnitude(closestPt - gridPos);
+					if(dist < fabs(grp->m_dist[voxelIndex]))
+					{
+						DebugDrawLine(gridPos, closestPt, 1.f, 1.f, 0.f, 1.f);
 #ifdef SGNDIST_EXTRA_DEBUG
-					DebugDrawPoint(gridPos, 1.f, 0, 0);
+						DebugDrawPoint(gridPos, 1.f, 0, 0);
 #endif
-					grp->m_dist[voxelIndex] = dist;
-					grp->m_closestTri[voxelIndex] = tri;
+						grp->m_dist[voxelIndex] = dist * (plane2 / fabs(plane2));
+						grp->m_closestTri[voxelIndex] = tri;
+					}
 				}
-				// This should really have an intersection test too. We don't want to vote for cells
-				// that have collisions between the gridPos and the closest Point on the triangle.
-				if(plane2 > 0.f) // again, mask
-					++grp->m_votesOutside[voxelIndex];
-				else
-					++grp->m_votesInside[voxelIndex];
-
 				plane0 += planeIncX[0];
 				plane1 += planeIncX[1];
 				plane2 += planeIncX[2];
-				gridPos.x += m_resolution;
+				gridPos.x += resolution;
 				++voxelIndex;
 			}
 		}
@@ -534,6 +532,13 @@ void SignedDistanceField::SplatVoxelGroup(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+SignedDistanceField::Iterator::Iterator()
+	: m_field(0)
+	, m_node(0)
+	, m_pos()
+{
+}
+
 SignedDistanceField::Iterator::Iterator(SignedDistanceField* field, VoxelOctNode *top)
 	: m_field(field)
 	, m_node(0)
@@ -700,21 +705,17 @@ float SignedDistanceField::Iterator::GetDistance() const
 		ASSERT(m_pos[0] >= m_node->m_minBounds[0] && m_pos[0] < m_node->m_maxBounds[0] &&
 			m_pos[1] >= m_node->m_minBounds[1] && m_pos[1] < m_node->m_maxBounds[1] &&
 			m_pos[2] >= m_node->m_minBounds[2] && m_pos[2] < m_node->m_maxBounds[2]);
+		
+		VoxelOctNode *cache = m_node;
+		VoxelGroup* grp = m_field->FindVoxelGroup(m_pos[0], m_pos[1], m_pos[2], cache, false);
+		ASSERT(grp);
 
-		ASSERT(m_node->m_leaf);
-		int blockLocal[3];
 		int groupLocal[3];
 		for(int i = 0; i < 3; ++i)
 		{
 			int local = m_pos[i] - m_node->m_minBounds[i];
-			blockLocal[i] = local / kVoxelGroupDim;
 			groupLocal[i] = local % kVoxelGroupDim;
 		}
-
-		const VoxelGroup *grp = &m_node->m_leaf->m_groups[
-			blockLocal[0] +
-			VoxelLeafBlock::kLeafDim * blockLocal[1] +
-			VoxelLeafBlock::kLeafDim * VoxelLeafBlock::kLeafDim * blockLocal[2]];
 
 		int grpIdx = groupLocal[0] +
 			kVoxelGroupDim * groupLocal[1] +
@@ -725,10 +726,6 @@ float SignedDistanceField::Iterator::GetDistance() const
 			return FLT_MAX;
 
 		float dist = grp->m_dist[grpIdx];
-		float sign = grp->m_votesOutside[grpIdx] - grp->m_votesInside[grpIdx]; 
-		if(sign == 0) sign = -1.f;
-		sign = sign / fabs(sign);
-		dist *= sign;
 		return dist;
 	}
 	else
@@ -742,25 +739,174 @@ int SignedDistanceField::Iterator::GetClosestTri() const
 	if(m_node == 0)
 		return -1;
 
-	ASSERT(m_node->m_leaf);
-	int blockLocal[3];
+	ASSERT(m_pos[0] >= m_node->m_minBounds[0] && m_pos[0] < m_node->m_maxBounds[0] &&
+			m_pos[1] >= m_node->m_minBounds[1] && m_pos[1] < m_node->m_maxBounds[1] &&
+			m_pos[2] >= m_node->m_minBounds[2] && m_pos[2] < m_node->m_maxBounds[2]);
+	VoxelOctNode *cache = m_node;
+	VoxelGroup* grp = m_field->FindVoxelGroup(m_pos[0], m_pos[1], m_pos[2], cache, false);
+	ASSERT(grp);
+	
 	int groupLocal[3];
 	for(int i = 0; i < 3; ++i)
 	{
 		int local = m_pos[i] - m_node->m_minBounds[i];
-		blockLocal[i] = local / kVoxelGroupDim;
 		groupLocal[i] = local % kVoxelGroupDim;
 	}
-
-	const VoxelGroup *grp = &m_node->m_leaf->m_groups[
-		blockLocal[0] +
-		VoxelLeafBlock::kLeafDim * blockLocal[1] +
-		VoxelLeafBlock::kLeafDim * VoxelLeafBlock::kLeafDim * blockLocal[2]];
 
 	int grpIdx = groupLocal[0] +
 		kVoxelGroupDataLen * groupLocal[1] +
 		kVoxelGroupDataLen * kVoxelGroupDataLen * groupLocal[2];
+
 	ASSERT(grpIdx >= 0 && grpIdx < kVoxelGroupDataLen);
 	return grp->m_closestTri[grpIdx];	
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+SignedDistanceField::Sampler::Sampler()
+	: m_field(0)
+	, m_cache(0)
+{
+}
+
+SignedDistanceField::Sampler::Sampler(const Sampler& other)
+	: m_field(other.m_field)
+	, m_cache(other.m_cache)
+{
+}
+
+SignedDistanceField::Sampler& SignedDistanceField::Sampler::operator=(const Sampler& other)
+{
+	if(this != &other)	// actually this doesn't really matter here
+	{
+		m_field = other.m_field;
+		m_cache = other.m_cache;
+	}
+	return *this;
+}
+
+SignedDistanceField::Sampler::Sampler(SignedDistanceField* field)
+	: m_field(field)
+	, m_cache(0)
+{
+}
+
+float SignedDistanceField::Sampler::GetDistance(Vec3_arg pos) 
+{
+	const float halfWidth = m_field->GetGridWidth() * 0.5f; 
+	const float invWidth = m_field->GetInvGridWidth();
+	int ix, iy, iz;
+	m_field->GridCoordsFromVec(pos - Vec3(halfWidth,halfWidth,halfWidth), ix, iy, iz);
+	Vec3 cellCenter = m_field->CellCenterFromGridCoords(ix,iy,iz);
+	Vec3 toPos = pos - cellCenter;
+	float u = toPos.x * invWidth;
+	float v = toPos.y * invWidth;
+	float w = toPos.z * invWidth;
+	ASSERT(u >= 0.f && u <= 1.f);
+	ASSERT(v >= 0.f && v <= 1.f);
+	ASSERT(w >= 0.f && w <= 1.f);
+	float uOther = 1.f - u;
+	float vOther = 1.f - v;
+	float wOther = 1.f - w;
+	float weights[8] = {
+		uOther * vOther * wOther,
+		u * vOther * wOther,
+		uOther * v * wOther,
+		u * v * wOther,
+		uOther * vOther * w,
+		u * vOther * w,
+		uOther * v * w,
+		u * v * w,
+	};
+
+	float samples[8];
+	float totalWeight = 0;
+	int curSample = 0;
+	float smallest = FLT_MAX, largest = -FLT_MAX;
+	for(int z = 0; z < 2; ++z)
+	{
+		for(int y = 0; y < 2; ++y)
+		{
+			for(int x = 0; x < 2; ++x, ++curSample)
+			{
+				VoxelGroup *grp = m_field->FindVoxelGroup(ix + x, iy + y, iz + z, m_cache, false);
+				if(grp)
+				{
+					ASSERT(m_cache);
+					int groupLocal[3] = {
+						(ix + x - m_cache->m_minBounds[0]) % kVoxelGroupDim,
+						(iy + y - m_cache->m_minBounds[1]) % kVoxelGroupDim,
+						(iz + z - m_cache->m_minBounds[2]) % kVoxelGroupDim,
+					};
+
+					int grpIdx = groupLocal[0] +
+						kVoxelGroupDim * groupLocal[1] +
+						kVoxelGroupDim * kVoxelGroupDim * groupLocal[2];
+					ASSERT(grpIdx >= 0 && grpIdx < kVoxelGroupDataLen);
+
+	//				if(grp->m_closestTri[grpIdx] != UINT_MAX)
+	//				{
+	//					DebugDrawPoint(m_field->CellCenterFromGridCoords(ix + x, iy + y, iz +z), 1.f, 0.f, 1.f);
+						float dist = grp->m_dist[grpIdx];
+						samples[curSample] = dist;
+						totalWeight += weights[curSample];
+
+						smallest = Min(dist, smallest);
+						largest = Max(dist, largest);
+	//				}
+				}
+			}
+		}
+	}
+	
+	if(smallest <= 0.f && largest <= 0.f)
+	{
+		for(int i = 0; i < 8; ++i)
+			if(samples[i] == FLT_MAX)
+				samples[i] = -m_field->GetNarrowBandWidth();
+	}
+	else if(smallest > 0.f && largest > 0.f)
+	{
+		for(int i = 0; i < 8; ++i)
+			if(samples[i] == FLT_MAX)
+				samples[i] = m_field->GetNarrowBandWidth();
+	}
+
+	float sampleValue = 0.f;
+	for(int i = 0; i < 8; ++i)
+		sampleValue += weights[i] * samples[i];
+
+	//if(totalWeight > 0.f)
+	//	sampleValue /= totalWeight;
+	//else
+	//{
+	//	sampleValue = FLT_MAX;
+	//}
+	return sampleValue;
+}
+
+int SignedDistanceField::Sampler::GetClosestTri(Vec3_arg pos) 
+{
+	int ix, iy, iz;
+	m_field->GridCoordsFromVec(pos, ix, iy, iz);
+	VoxelGroup *grp = m_field->FindVoxelGroup(ix, iy, iz, m_cache, false);
+	if(grp)
+	{
+		ASSERT(m_cache);
+		int groupLocal[3] = {
+			(ix - m_cache->m_minBounds[0]) % kVoxelGroupDim,
+			(iy - m_cache->m_minBounds[1]) % kVoxelGroupDim,
+			(iz - m_cache->m_minBounds[2]) % kVoxelGroupDim,
+		};
+
+		int grpIdx = groupLocal[0] +
+			kVoxelGroupDim * groupLocal[1] +
+			kVoxelGroupDim * kVoxelGroupDim * groupLocal[2];
+		ASSERT(grpIdx >= 0 && grpIdx < kVoxelGroupDataLen);
+
+		return grp->m_closestTri[grpIdx];
+	}
+
+	return -1;
 }
 
