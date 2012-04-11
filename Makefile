@@ -1,36 +1,85 @@
-SRC_DELAUNAY = delaunay.cpp debugdraw.cpp math/math.cpp sparsegrid.cpp triangulator.cpp draw.cpp cmdhelper.cpp
+ifndef config
+	config=debug
+endif
+
+COMPILE=g++
+NAME_DELAUNAY=delaunay
+NAME_MAKEPOINTS=makepoints
+CPPFLAGS=-MMD -MP -Wall -Wextra -Weffc++ -pedantic -fno-rtti -fno-exceptions -fno-math-errno -ffast-math -I. -DDEBUG -DLINUX
+DEFINES=
+
+ifeq ($(config),release)
+	DEFINES += -DRELEASE
+	CPPFLAGS += -O3 $(DEFINES)
+	TARGETDIR = .
+	TARGET_DELAUNAY = $(NAME_DELAUNAY)-z
+	TARGET_MAKEPOINTS = $(NAME_MAKEPOINTS)-z
+	OBJDIR = obj/release
+endif
+
+ifeq ($(config),debug)
+	DEFINES += -DDEBUG
+	CPPFLAGS += -g -ggdb $(DEFINES)
+	TARGETDIR = .
+	TARGET_DELAUNAY = $(NAME_DELAUNAY)-d
+	TARGET_MAKEPOINTS = $(NAME_MAKEPOINTS)-d
+	OBJDIR = obj/debug
+endif
+
+LIBS = -lm -lGL -lGLU -lglut
+
+OBJ_DELAUNAY := \
+	$(OBJDIR)/delaunay.o \
+	$(OBJDIR)/debugdraw.o \
+	$(OBJDIR)/math/math.o \
+	$(OBJDIR)/sparsegrid.o \
+	$(OBJDIR)/triangulator.o \
+	$(OBJDIR)/draw.o \
+	$(OBJDIR)/cmdhelper.o \
+
+OBJ_MAKEPOINTS := \
+	$(OBJDIR)/makepoints.o \
+	$(OBJDIR)/cmdhelper.o \
+
 OBJS_DELAUNAY = $(SRC_DELAUNAY:.cpp=.o)
-SRC_MAKEPOINTS = makepoints.cpp cmdhelper.cpp
 OBJS_MAKEPOINTS = $(SRC_MAKEPOINTS:.cpp=.o)
-SRC_TETCLIP = tetclip.cpp ply.cpp cmdhelper.cpp trisoup.cpp debugdraw.cpp draw.cpp math/math.cpp sgndist.cpp \
-	surfconst.cpp
-OBJS_TETCLIP = $(SRC_TETCLIP:.cpp=.o)
-
-.PHONY: all
-all: delaunay makepoints tetclip
-
-%.o : %.cpp
-	g++ -c -o $*.o -g -Wall -Wextra -Weffc++ -pedantic -O3 -ggdb -fno-rtti -fno-exceptions -I. -DDEBUG -DLINUX $*.cpp
-
-delaunay : $(OBJS_DELAUNAY)
-	g++ -o delaunay $(OBJS_DELAUNAY) -lm -lGL -lGLU -lglut
-
-makepoints : $(OBJS_MAKEPOINTS)
-	g++ -o makepoints $(OBJS_MAKEPOINTS) -lm 
-
-tetclip : $(OBJS_TETCLIP)
-	g++ -o tetclip $(OBJS_TETCLIP) -lm -lGL -lGLU -lglut
 
 .PHONY: clean
+
+all: $(TARGETDIR) $(OBJDIR) $(OBJDIR)/math $(TARGET_DELAUNAY) $(TARGET_MAKEPOINTS)
+	@:
+
+$(TARGET_DELAUNAY) : $(OBJ_DELAUNAY)
+	$(COMPILE) -o  $(TARGET_DELAUNAY) $(OBJ_DELAUNAY) $(LIBS)
+
+$(TARGET_MAKEPOINTS) : $(OBJ_MAKEPOINTS)
+	$(COMPILE) -o  $(TARGET_MAKEPOINTS) $(OBJ_MAKEPOINTS) $(LIBS)
+
+$(TARGETDIR):
+	mkdir -p $(TARGETDIR)
+
+$(OBJDIR):
+	mkdir -p $(OBJDIR)
+
+$(OBJDIR)/math:
+	mkdir -p $(OBJDIR)/math
+
 clean:
-	@rm -f $(OBJS_DELAUNAY) delaunay $(OBJS_MAKEPOINTS) makepoints
+	rm -f $(TARGET_DELAUNAY) $(TARGET_MAKEPOINTS)
+	rm -rf $(OBJDIR)
+
+$(OBJDIR)/%.o : %.cpp
+	$(COMPILE) -c -o $@ $(CPPFLAGS) $< 
+
+$(OBJDIR)/math/%.o : math/%.cpp
+	$(COMPILE) -c -o $@ $(CPPFLAGS) $< 
 
 .PHONY: depend
 depend:
 	@rm -f .depend
 	$(foreach srcfile,$(SRC_DELAUNAY),g++ -MM -I. $(srcfile) >> .depend;)
 	$(foreach srcfile,$(SRC_MAKEPOINTS),g++ -MM -I. $(srcfile) >> .depend;)
-	$(foreach srcfile,$(SRC_TETCLIP),g++ -MM -I. $(srcfile) >> .depend;)
 
--include .depend
+-include $(OBJ_DELAUNAY:%.o=%.d)
+-include $(OBJ_MAKEPOINTS:%.o=%.d)
 
