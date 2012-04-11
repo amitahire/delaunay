@@ -96,7 +96,6 @@ static void ddRenderVecs();
 
 void RenderDebugDraw()
 {
-	glDisable(GL_LIGHTING);
 	ddRenderAABBs();
 	ddRenderOBBs();
 	ddRenderPoints();
@@ -104,7 +103,6 @@ void RenderDebugDraw()
 	ddRenderSpheres();
 	ddRenderTris();
 	ddRenderVecs();
-	glEnable(GL_LIGHTING);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
